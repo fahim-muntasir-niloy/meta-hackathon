@@ -1,7 +1,7 @@
 /**
  * Component library the agent writes openui-lang against.
  * `npm run generate:prompt` turns it into the backend system prompt
- * (src/meta_hackathon/agent/openui_prompt.md) — rerun after changing this file.
+ * (src/meta_hackathon/prompts/openui_prompt.md) — rerun after changing this file.
  */
 import { openuiChatLibrary } from "@openuidev/react-ui/genui-lib";
 import { openuiChatPromptOptions } from "@openuidev/react-ui/genui-lib/prompt-options";

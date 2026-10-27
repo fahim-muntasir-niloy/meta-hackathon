@@ -2,21 +2,12 @@
 model can answer "কালকে কি বৃষ্টি হবে?" without doing date arithmetic."""
 
 from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
 
-DHAKA = ZoneInfo("Asia/Dhaka")
-
-_BN_DIGITS = str.maketrans("0123456789", "০১২৩৪৫৬৭৮৯")
-_BN_WEEKDAYS = ["সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার", "শনিবার", "রবিবার"]
-_BN_MONTHS = [
-    "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন",
-    "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর",
-]
+from meta_hackathon.utils.bangla import DHAKA, bn_date
 
 
 def _day(d: date) -> str:
-    bangla = f"{_BN_WEEKDAYS[d.weekday()]}, {d.day} {_BN_MONTHS[d.month - 1]} {d.year}".translate(_BN_DIGITS)
-    return f"{d.isoformat()} ({d:%A}) — {bangla}"
+    return f"{d.isoformat()} ({d:%A}) — {bn_date(d)}"
 
 
 def date_block(now: datetime | None = None) -> str:

@@ -10,7 +10,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "generate:prompt": "openui generate src/lib/library.ts --out ../src/meta_hackathon/agent/openui_prompt.md --no-interactive && rm ../src/meta_hackathon/agent/openui_prompt.spec.json"
+    "generate:prompt": "openui generate src/lib/library.ts --out ../src/meta_hackathon/prompts/openui_prompt.md --no-interactive && rm ../src/meta_hackathon/prompts/openui_prompt.spec.json"
   },
   "dependencies": {
     "@langchain/core": "^1.2.5",

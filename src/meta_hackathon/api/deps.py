@@ -2,7 +2,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Request
 
-from meta_hackathon.identity import normalize_phone
+from meta_hackathon.utils.phone import normalize_phone
 
 
 def get_phone_number(

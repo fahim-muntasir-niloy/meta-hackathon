@@ -34,6 +34,6 @@ Open http://localhost:3000 and enter a mobile number (e.g. `01712345678`). There
 ### Changing the UI components
 
 The agent's openui-lang system prompt is generated from the component library in
-`frontend/src/lib/library.ts` into `src/meta_hackathon/agent/openui_prompt.md`. After editing the
+`frontend/src/lib/library.ts` into `src/meta_hackathon/prompts/openui_prompt.md`. After editing the
 library, run `npm run generate:prompt` in `frontend/` (it also runs on `npm run dev`) and commit the
 regenerated prompt.

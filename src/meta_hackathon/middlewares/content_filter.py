@@ -15,7 +15,7 @@ import openai
 from langchain.agents.middleware import ModelRequest, ModelResponse, wrap_model_call
 from langchain.messages import AIMessage, SystemMessage
 
-from meta_hackathon.agent.prompts import ReplyFormat
+from meta_hackathon.prompts.system import ReplyFormat
 
 logger = logging.getLogger(__name__)
 

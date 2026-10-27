@@ -3,7 +3,7 @@ trusted as the user identity, and every thread is scoped to its owner's phone.""
 
 from langgraph_sdk import Auth
 
-from meta_hackathon.identity import normalize_phone
+from meta_hackathon.utils.phone import normalize_phone
 
 auth = Auth()
 
