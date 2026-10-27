@@ -1,0 +1,80 @@
+/**
+ * Groups the flat LangGraph message list into chat turns: a user message, then
+ * one assistant turn holding its tool steps and the final openui-lang reply.
+ */
+import type { BaseMessage } from "@langchain/core/messages";
+import type { StepStatus } from "./narration";
+
+export type Step = {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  status: StepStatus;
+  result: unknown;
+};
+
+export type Turn =
+  | { kind: "user"; id: string; text: string }
+  | { kind: "assistant"; id: string; steps: Step[]; reply: string | null; replyId: string | null };
+
+type ToolCall = { id?: string; name: string; args: Record<string, unknown> };
+
+export function messageText(m: BaseMessage): string {
+  if (typeof m.content === "string") return m.content;
+  return m.content
+    .map((block) => (typeof block === "string" ? block : block.type === "text" ? String(block.text ?? "") : ""))
+    .join("");
+}
+
+function parseResult(content: string): unknown {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return content;
+  }
+}
+
+export function buildTurns(messages: BaseMessage[], isLoading: boolean): Turn[] {
+  const results = new Map<string, { content: unknown; error: boolean }>();
+  for (const m of messages) {
+    if (m.type === "tool") {
+      const tm = m as BaseMessage & { tool_call_id: string; status?: string };
+      results.set(tm.tool_call_id, { content: parseResult(messageText(m)), error: tm.status === "error" });
+    }
+  }
+
+  const turns: Turn[] = [];
+  let current: Extract<Turn, { kind: "assistant" }> | null = null;
+
+  messages.forEach((m, i) => {
+    const id = m.id ?? `msg-${i}`;
+    if (m.type === "human") {
+      current = null;
+      turns.push({ kind: "user", id, text: messageText(m) });
+      return;
+    }
+    if (m.type !== "ai") return;
+    if (!current) {
+      current = { kind: "assistant", id, steps: [], reply: null, replyId: null };
+      turns.push(current);
+    }
+    const toolCalls = ((m as BaseMessage & { tool_calls?: ToolCall[] }).tool_calls ?? []).filter((tc) => tc.name);
+    if (toolCalls.length) {
+      // Text alongside tool calls is the model thinking aloud; the narrated steps replace it.
+      for (const tc of toolCalls) {
+        const res = tc.id ? results.get(tc.id) : undefined;
+        current.steps.push({
+          id: tc.id ?? `${id}-${tc.name}`,
+          name: tc.name,
+          args: tc.args ?? {},
+          status: res ? (res.error ? "error" : "done") : isLoading ? "running" : "stopped",
+          result: res?.content,
+        });
+      }
+    } else if (messageText(m).trim()) {
+      current.reply = messageText(m);
+      current.replyId = id;
+    }
+  });
+  return turns;
+}
