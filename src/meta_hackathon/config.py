@@ -7,6 +7,11 @@ class Config(BaseSettings):
     META_API_KEY: str
     META_BASE_URL: str
     MODEL_NAME: str
+    SEGMENT_MODEL_NAME: str = "sam-3.1"
+
+    # Annotated images are saved here and served at {PUBLIC_BASE_URL}/media/<file>.
+    MEDIA_DIR: str = ".media"
+    PUBLIC_BASE_URL: str = "http://localhost:2024"
 
     LANGSMITH_TRACING: str
     LANGSMITH_ENDPOINT: str

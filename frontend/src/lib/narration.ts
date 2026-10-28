@@ -3,7 +3,7 @@
  * "বগুড়ার ৩ দিনের আবহাওয়ার পূর্বাভাস দেখছি" → "বগুড়ার আবহাওয়া দেখা হয়েছে".
  */
 import type { LucideIcon } from "lucide-react";
-import { BookOpenCheck, CalendarCheck, CloudSun, Globe, MapPin, Wrench } from "lucide-react";
+import { BookOpenCheck, CalendarCheck, CloudSun, Globe, MapPin, ScanSearch, Wrench } from "lucide-react";
 import { bnDateTime, bnDigits, term } from "./bn";
 
 export type StepStatus = "running" | "done" | "error" | "stopped";
@@ -73,6 +73,19 @@ const narrators: Record<string, Narrator> = {
         .filter(Boolean)
         .join(" · ") || undefined,
     };
+  },
+
+  segment_image: (args, status, result) => {
+    const labels = asArray(args.targets).map((t) => str(t.label)).filter(Boolean);
+    if (status !== "done") return { icon: ScanSearch, title: `ছবিতে ${labels.join(", ") || "সমস্যা"} চিহ্নিত করছি` };
+    const found = asArray((result as Args | undefined)?.found);
+    return found.length
+      ? {
+          icon: ScanSearch,
+          title: "ছবিতে চিহ্নিত করা হয়েছে",
+          detail: found.map((f) => `${str(f.label)}: ${bnDigits(Number(f.count))}টি`).join(" · "),
+        }
+      : { icon: ScanSearch, title: "ছবিতে চিহ্নিত করার মতো কিছু পাওয়া যায়নি" };
   },
 
   geocode_location: (args, status, result) => {

@@ -13,3 +13,5 @@ wheels/
 /docs
 # LangGraph dev server local state
 .langgraph_api/
+# Annotated images from segment_image
+.media/

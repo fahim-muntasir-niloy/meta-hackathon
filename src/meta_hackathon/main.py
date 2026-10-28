@@ -1,8 +1,11 @@
 from contextlib import asynccontextmanager
 
+import re
+from pathlib import Path
+
 import openai
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from langgraph.checkpoint.memory import InMemorySaver
 
 from meta_hackathon.config import settings, setup_langsmith
@@ -33,6 +36,18 @@ async def model_bad_request(request: Request, exc: openai.BadRequestError) -> JS
             content={"detail": "Message was blocked by the model provider's content filter."},
         )
     return JSONResponse(status_code=502, content={"detail": f"Model request failed: {exc.message}"})
+
+
+@app.get("/media/{name}", tags=["meta"])
+async def media(name: str) -> FileResponse:
+    """Annotated images from segment_image. Public (custom routes skip Agent Server
+    auth), but names are unguessable random ids."""
+    if not re.fullmatch(r"[a-f0-9]{32}\.jpg", name):
+        raise HTTPException(status_code=404)
+    path = Path(settings.MEDIA_DIR) / name
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @app.get("/health", tags=["meta"])
