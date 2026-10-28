@@ -13,9 +13,12 @@ dependencies = [
     "langchain>=1.4.7",
     "langchain-mcp-adapters>=0.3.1",
     "langchain-openai>=1.7.2",
+    "langgraph-cli[inmem]>=0.4.40",
+    "pillow>=13.0.0",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.1",
     "rich>=15.0.0",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -24,3 +27,6 @@ meta-hackathon = "meta_hackathon:main"
 [build-system]
 requires = ["uv_build>=0.12.24,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = []

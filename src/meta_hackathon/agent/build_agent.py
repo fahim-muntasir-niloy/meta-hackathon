@@ -1,8 +1,22 @@
-from langchain import create_agent
+from langchain.agents import create_agent
+from langgraph.types import Checkpointer
 
-from meta_hackathon.config import settings
+from meta_hackathon.agent.context import UserContext
+from meta_hackathon.agent.model import llm
+from meta_hackathon.middlewares.content_filter import content_filter_guard
+from meta_hackathon.middlewares.system_prompt import system_prompt
+from meta_hackathon.prompts.system import ReplyFormat
+from meta_hackathon.tools import ALL_TOOLS
 
 
-async def build_agent():
-    agent = create_agent()
-    return agent
+def build_agent(*, reply_format: ReplyFormat = "text", checkpointer: Checkpointer = None):
+    """`text` for plain chat channels (WhatsApp, /v1/chat); `openui` for the web UI,
+    where replies are openui-lang rendered by the OpenUI Renderer."""
+    return create_agent(
+        model=llm,
+        tools=ALL_TOOLS,
+        middleware=[system_prompt(reply_format), content_filter_guard(reply_format)],
+        context_schema=UserContext,
+        checkpointer=checkpointer,
+        name="krishi_advisor",
+    )
