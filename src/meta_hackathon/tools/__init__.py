@@ -1,6 +1,9 @@
-"""Agent tools. All simulated for now; swap each body for the real integration."""
+"""Agent tools. Real: get_weather (Open-Meteo), geocode_location (OpenStreetMap),
+search_internet (Muse web search). The rest are simulated for now — swap each body
+for the real integration."""
 
 from meta_hackathon.tools.booking import schedule_officer_session
+from meta_hackathon.tools.geocode import geocode_location
 from meta_hackathon.tools.knowledge import search_knowledgebase
 from meta_hackathon.tools.weather import get_weather
 from meta_hackathon.tools.web_search import search_internet
@@ -10,6 +13,7 @@ ALL_TOOLS = [
     get_weather,
     search_knowledgebase,
     schedule_officer_session,
+    geocode_location,
 ]
 
 __all__ = ["ALL_TOOLS"]

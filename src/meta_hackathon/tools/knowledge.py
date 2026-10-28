@@ -52,8 +52,8 @@ _CHUNKS = [
 @tool
 def search_knowledgebase(query: str, crop: str | None = None, top_k: int = 3) -> list[dict]:
     """Search the verified agriculture knowledge base (DAE / BRRI / BARI guidance)
-    for disease, pest, fertiliser and cultivation advice. Always prefer this over
-    internet search for treatment advice, and cite the returned `id`s.
+    for rice disease and pest treatment. It only covers a few topics so far; use
+    search_internet for anything it does not match. Cite the returned `id`s.
 
     Args:
         query: Symptoms or question, in Bangla or English.
@@ -73,4 +73,6 @@ def search_knowledgebase(query: str, crop: str | None = None, top_k: int = 3) ->
         for score, c in scored[: max(1, min(top_k, 5))]
         if score > 0
     ]
-    return hits or [{"id": None, "text": "No matching guidance found.", "score": 0}]
+    return hits or [
+        {"id": None, "text": "No matching guidance in the knowledge base. Call search_internet for this.", "score": 0}
+    ]
