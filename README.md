@@ -20,8 +20,8 @@ Open http://localhost:3000 and enter a mobile number (e.g. `01712345678`). There
 
 ## How it fits together
 
-- **Agent** (`src/meta_hackathon/agent/`): LangChain `create_agent` on Muse, with four tools in
-  `src/meta_hackathon/tools/` (all simulated for now). LangSmith tracing comes from `.env`.
+- **Agent** (`src/meta_hackathon/agent/`): LangChain `create_agent` on Muse, with five tools in
+  `src/meta_hackathon/tools/` (`get_weather` uses Open-Meteo, `geocode_location` OpenStreetMap Nominatim and `search_internet` Muse's built-in web search; the rest are simulated for now). LangSmith tracing comes from `.env`.
 - **Agent Server** (`langgraph.json`): serves the graph to the web UI, stores threads, and runs
   `src/meta_hackathon/auth.py`, which turns `X-Phone-Number` into the user identity and scopes threads to it.
 - **Web UI** (`frontend/`): `useStream` from `@langchain/react` + OpenUI's `Renderer`, following the

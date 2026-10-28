@@ -1,8 +1,8 @@
 "use client";
 
-import { openuiChatLibrary } from "@openuidev/react-ui/genui-lib";
 import { Renderer, type ActionEvent } from "@openuidev/react-lang";
 import { memo } from "react";
+import { library } from "@/lib/library";
 
 /** Models sometimes wrap the program in a code fence; the renderer wants bare openui-lang. */
 function stripFence(text: string) {
@@ -26,7 +26,7 @@ export const AssistantReply = memo(function AssistantReply({ text, isStreaming, 
   }
   return (
     <div className="reply">
-      <Renderer response={program} library={openuiChatLibrary} isStreaming={isStreaming} onAction={onAction} />
+      <Renderer response={program} library={library} isStreaming={isStreaming} onAction={onAction} />
     </div>
   );
 });

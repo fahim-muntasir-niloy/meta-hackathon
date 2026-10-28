@@ -5,33 +5,3 @@ export function normalizePhone(raw: string): string | null {
   if (!/^\+?[1-9]\d{7,14}$/.test(phone)) return null;
   return phone.startsWith("+") ? phone : `+${phone}`;
 }
-
-const STORAGE_KEY = "krishi.phone";
-const listeners = new Set<() => void>();
-// Fallback when storage is unavailable (private mode): the session works, it just isn't remembered.
-let memoryPhone: string | null = null;
-
-export function loadPhone(): string | null {
-  try {
-    return localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return memoryPhone;
-  }
-}
-
-export function savePhone(phone: string | null) {
-  memoryPhone = phone;
-  try {
-    if (phone) localStorage.setItem(STORAGE_KEY, phone);
-    else localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Kept in memory only.
-  }
-  listeners.forEach((notify) => notify());
-}
-
-/** For useSyncExternalStore. */
-export function subscribePhone(notify: () => void) {
-  listeners.add(notify);
-  return () => listeners.delete(notify);
-}

@@ -3,6 +3,7 @@
  * one assistant turn holding its tool steps and the final openui-lang reply.
  */
 import type { BaseMessage } from "@langchain/core/messages";
+import { contentImages } from "./images";
 import type { StepStatus } from "./narration";
 
 export type Step = {
@@ -14,7 +15,7 @@ export type Step = {
 };
 
 export type Turn =
-  | { kind: "user"; id: string; text: string }
+  | { kind: "user"; id: string; text: string; images: string[] }
   | { kind: "assistant"; id: string; steps: Step[]; reply: string | null; replyId: string | null };
 
 type ToolCall = { id?: string; name: string; args: Record<string, unknown> };
@@ -50,7 +51,7 @@ export function buildTurns(messages: BaseMessage[], isLoading: boolean): Turn[] 
     const id = m.id ?? `msg-${i}`;
     if (m.type === "human") {
       current = null;
-      turns.push({ kind: "user", id, text: messageText(m) });
+      turns.push({ kind: "user", id, text: messageText(m), images: contentImages(m.content) });
       return;
     }
     if (m.type !== "ai") return;

@@ -25,6 +25,8 @@ import { UserMessage } from "@/components/user-message";
 import { bnDigits } from "@/lib/bn";
 import { API_URL, ASSISTANT_ID, PHONE_HEADER } from "@/lib/config";
 import { decodeFormMessage, encodeFormMessage, flattenFormState } from "@/lib/form-message";
+import { contentImages, imageBlock } from "@/lib/images";
+import { placeLabel, profileContext, type Profile } from "@/lib/profile";
 import { buildTurns } from "@/lib/turns";
 
 const BRAND = { light: "#1f7a4d", dark: "#4cc38a" };
@@ -37,12 +39,12 @@ const STARTERS = [
   {
     icon: Leaf,
     title: "ধানের পাতায় দাগ",
-    prompt: "আমার ধানের পাতায় চোখের মতো দাগ পড়ছে। আমি বগুড়ায় থাকি। কী করব?",
+    prompt: "আমার ধানের পাতায় চোখের মতো দাগ পড়ছে। কী করব?",
   },
   {
     icon: CloudSun,
     title: "এ সপ্তাহে মাঠের কাজ",
-    prompt: "এ সপ্তাহে বগুড়ার আবহাওয়া কি ধানক্ষেতে কাজ করার জন্য ভালো?",
+    prompt: "এ সপ্তাহের আবহাওয়া কি ধানক্ষেতে কাজ করার জন্য ভালো?",
   },
   {
     icon: Bug,
@@ -56,7 +58,7 @@ const STARTERS = [
   },
 ];
 
-export function ChatApp({ phone, onSignOut }: { phone: string; onSignOut: () => void }) {
+export function ChatApp({ profile, onSignOut }: { profile: Profile; onSignOut: () => void }) {
   const { mode, setPreference } = useThemeModePreference();
   useEffect(() => {
     document.documentElement.dataset.theme = mode;
@@ -69,7 +71,7 @@ export function ChatApp({ phone, onSignOut }: { phone: string; onSignOut: () => 
       darkTheme={{ ...FONTS, interactiveAccentDefault: BRAND.dark, textBrand: BRAND.dark }}
     >
       <Chat
-        phone={phone}
+        profile={profile}
         onSignOut={onSignOut}
         mode={mode}
         onToggleTheme={() => setPreference(mode === "dark" ? "light" : "dark")}
@@ -79,13 +81,15 @@ export function ChatApp({ phone, onSignOut }: { phone: string; onSignOut: () => 
 }
 
 type ChatProps = {
-  phone: string;
+  profile: Profile;
   onSignOut: () => void;
   mode: "light" | "dark";
   onToggleTheme: () => void;
 };
 
-function Chat({ phone, onSignOut, mode, onToggleTheme }: ChatProps) {
+function Chat({ profile, onSignOut, mode, onToggleTheme }: ChatProps) {
+  const { phone, name } = profile;
+  const context = useMemo(() => profileContext(profile), [profile]);
   const headers = useMemo(() => ({ [PHONE_HEADER]: phone }), [phone]);
   const client = useMemo(() => new Client({ apiUrl: API_URL, defaultHeaders: headers }), [headers]);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -123,10 +127,16 @@ function Chat({ phone, onSignOut, mode, onToggleTheme }: ChatProps) {
     (lastTurn?.kind === "user" || (lastTurn?.kind === "assistant" && !lastTurn.reply));
 
   const send = useCallback(
-    (text: string) => {
-      void stream.submit({ messages: [{ type: "human", content: text }] });
+    (text: string, images: string[] = []) => {
+      // Photos go as image_url content blocks next to the text (Muse reads them directly).
+      const content = images.length
+        ? [...(text ? [{ type: "text" as const, text }] : []), ...images.map(imageBlock)]
+        : text;
+      // Phone comes from the auth identity; name and place go into the system prompt.
+      // The Agent Server copies `configurable` into the run context (UserContext).
+      void stream.submit({ messages: [{ type: "human", content }] }, { config: { configurable: context } });
     },
-    [stream],
+    [stream, context],
   );
 
   const onAction = useCallback(
@@ -180,13 +190,14 @@ function Chat({ phone, onSignOut, mode, onToggleTheme }: ChatProps) {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <span className="phone-chip" title="আপনার নম্বর">
+          <span className="phone-chip" title={placeLabel(profile)}>
+            <span className="profile-name">{name}</span>
             {bnDigits(phone)}
           </span>
           <button type="button" className="icon-btn" onClick={onToggleTheme} aria-label="থিম পরিবর্তন">
             {mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-          <button type="button" className="icon-btn" onClick={onSignOut} aria-label="নম্বর পরিবর্তন">
+          <button type="button" className="icon-btn" onClick={onSignOut} aria-label="প্রোফাইল পরিবর্তন">
             <LogOut size={16} />
           </button>
         </div>
@@ -217,7 +228,7 @@ function Chat({ phone, onSignOut, mode, onToggleTheme }: ChatProps) {
             ) : (
               turns.map((turn, i) =>
                 turn.kind === "user" ? (
-                  <UserMessage key={turn.id} text={turn.text} />
+                  <UserMessage key={turn.id} text={turn.text} images={turn.images} />
                 ) : (
                   <div key={turn.id} className="assistant-turn">
                     <ToolActivity steps={turn.steps} />
@@ -308,6 +319,13 @@ function Note({ children }: { children: React.ReactNode }) {
 function threadTitle(thread: Thread): string {
   const messages = (thread.values as { messages?: { type?: string; content?: unknown }[] } | null)?.messages ?? [];
   const first = messages.find((m) => m.type === "human");
-  const text = typeof first?.content === "string" ? decodeFormMessage(first.content).label : "";
+  const raw = typeof first?.content === "string" ? first.content : textOf(first?.content);
+  const text = decodeFormMessage(raw).label;
+  if (!text && contentImages(first?.content).length) return "ছবি পাঠানো হয়েছে";
   return text ? (text.length > 48 ? `${text.slice(0, 47)}…` : text) : "নতুন কথোপকথন";
+}
+
+function textOf(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content.map((b) => (b && typeof b === "object" && b.type === "text" ? String(b.text ?? "") : "")).join(" ").trim();
 }

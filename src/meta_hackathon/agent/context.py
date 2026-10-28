@@ -8,6 +8,11 @@ class UserContext:
     """Per-request runtime context, available to tools via `ToolRuntime`."""
 
     phone_number: str | None = None
+    # Farmer profile from the web UI's sign-in form; unset on other channels.
+    name: str | None = None
+    area: str | None = None
+    district: str | None = None
+    division: str | None = None
 
 
 def phone_number(runtime: ToolRuntime) -> str | None:

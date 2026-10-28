@@ -25,6 +25,10 @@ export const TERMS: Record<string, string> = {
   cloudy: "মেঘলা",
   "light rain": "হালকা বৃষ্টি",
   "heavy rain": "ভারী বৃষ্টি",
+  "moderate rain": "মাঝারি বৃষ্টি",
+  drizzle: "গুঁড়ি গুঁড়ি বৃষ্টি",
+  thunderstorm: "বজ্রসহ বৃষ্টি",
+  fog: "কুয়াশা",
   // Form field names
   location: "এলাকা",
   issue_summary: "সমস্যা",

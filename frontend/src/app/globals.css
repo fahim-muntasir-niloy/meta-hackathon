@@ -150,7 +150,7 @@ body {
   color: var(--muted);
 }
 
-/* ---------- Phone gate ---------- */
+/* ---------- Profile gate ---------- */
 
 .gate {
   min-height: 100%;
@@ -185,44 +185,71 @@ body {
   font-size: 15px;
 }
 
-.gate-card label {
-  display: block;
+.gate-field {
   text-align: left;
+  margin-bottom: 14px;
+}
+
+.gate-field label {
+  display: block;
   font-size: 13px;
   font-weight: 600;
   margin-bottom: 6px;
 }
 
-.gate-input {
-  display: flex;
+.gate-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.gate-field input,
+.gate-field select {
+  width: 100%;
+  padding: 11px 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  overflow: hidden;
   background: var(--surface-2);
+  outline: none;
+  font-size: 16px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.gate-input:focus-within {
+.gate-field select {
+  appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238b968d' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.gate-field select:disabled {
+  opacity: 0.6;
+}
+
+.gate-field input:focus,
+.gate-field select:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px var(--brand-soft);
 }
 
-.gate-input input {
-  flex: 1;
-  min-width: 0;
-  padding: 12px 14px;
-  background: transparent;
-  outline: none;
-  font-size: 16px;
-  letter-spacing: 0.02em;
+.gate-field input[aria-invalid],
+.gate-field select[aria-invalid] {
+  border-color: var(--danger);
 }
 
-.gate-input button {
-  display: grid;
-  place-items: center;
-  width: 48px;
+.gate-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px;
+  border-radius: 12px;
   background: var(--brand);
   color: var(--brand-ink);
+  font-weight: 600;
 }
 
 .gate-hint,
@@ -234,6 +261,7 @@ body {
 }
 
 .gate-error {
+  margin-top: 6px;
   color: var(--danger);
 }
 
@@ -328,10 +356,21 @@ body {
 
 .phone-chip {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   font-size: 13px;
   color: var(--muted);
   padding: 0 6px;
   font-variant-numeric: tabular-nums;
+}
+
+.profile-name {
+  color: var(--text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .icon-btn {
@@ -442,6 +481,46 @@ body {
 .user-row {
   display: flex;
   justify-content: flex-end;
+}
+
+.user-images {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.user-images img {
+  width: min(200px, 38vw);
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  cursor: zoom-in;
+}
+
+.user-images-only {
+  max-width: min(80%, 560px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.8);
+  cursor: zoom-out;
+}
+
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
 }
 
 .user-bubble {
@@ -672,10 +751,7 @@ body {
 .composer {
   max-width: 780px;
   margin: 0 auto;
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 8px 8px 8px 18px;
+  padding: 8px;
   border-radius: 22px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -687,8 +763,74 @@ body {
   border-color: var(--brand);
 }
 
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.composer-attach {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: var(--muted);
+  flex: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.composer-attach:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--brand);
+}
+
+.composer-attach:disabled {
+  opacity: 0.35;
+}
+
+.composer-attachments {
+  display: flex;
+  gap: 8px;
+  padding: 4px 4px 8px;
+}
+
+.attachment {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+
+.attachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+}
+
+.composer-notice {
+  padding: 0 6px 6px;
+  font-size: 13px;
+  color: var(--danger);
+}
+
 .composer textarea {
   flex: 1;
+  min-width: 0;
   resize: none;
   background: transparent;
   outline: none;
@@ -837,4 +979,49 @@ body {
 
 .openui-listed-sources-header__title::after {
   content: "তথ্যসূত্র";
+}
+
+/* ---------- Map (custom OpenUI component) ---------- */
+
+.geo-map {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.geo-map-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.geo-map-canvas {
+  height: 260px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  /* Below OpenUI popovers and the composer. */
+  z-index: 0;
+}
+
+.geo-map-loading {
+  background: var(--surface-2);
+}
+
+.geo-map-canvas .leaflet-tooltip {
+  font-family: inherit;
+  font-weight: 600;
+}
+
+:root[data-theme="dark"] .geo-map-canvas .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9);
+}
+
+.geo-map-link {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--brand);
 }

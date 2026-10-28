@@ -3,7 +3,7 @@
  * "বগুড়ার ৩ দিনের আবহাওয়ার পূর্বাভাস দেখছি" → "বগুড়ার আবহাওয়া দেখা হয়েছে".
  */
 import type { LucideIcon } from "lucide-react";
-import { BookOpenCheck, CalendarCheck, CloudSun, Globe, Wrench } from "lucide-react";
+import { BookOpenCheck, CalendarCheck, CloudSun, Globe, MapPin, Wrench } from "lucide-react";
 import { bnDateTime, bnDigits, term } from "./bn";
 
 export type StepStatus = "running" | "done" | "error" | "stopped";
@@ -52,7 +52,12 @@ const narrators: Record<string, Narrator> = {
 
   search_internet: (args, status, result) => {
     if (status !== "done") return { icon: Globe, title: `ইন্টারনেটে ${quote(args.query)} খুঁজছি` };
-    return { icon: Globe, title: `ইন্টারনেট থেকে ${bnDigits(asArray(result).length)}টি ফলাফল পড়া হয়েছে` };
+    const sources = asArray((result as Args | undefined)?.sources);
+    return {
+      icon: Globe,
+      title: sources.length ? `ইন্টারনেটে ${bnDigits(sources.length)}টি উৎস পড়া হয়েছে` : "ইন্টারনেটে খোঁজা হয়েছে",
+      detail: sources.map((s) => str(s.title)).join(" · ") || undefined,
+    };
   },
 
   schedule_officer_session: (args, status, result) => {
@@ -68,6 +73,15 @@ const narrators: Record<string, Narrator> = {
         .filter(Boolean)
         .join(" · ") || undefined,
     };
+  },
+
+  geocode_location: (args, status, result) => {
+    const place = str(args.place, "জায়গাটি");
+    if (status !== "done") return { icon: MapPin, title: `ম্যাপে ${place} খুঁজছি` };
+    const hit = asArray((result as Args | undefined)?.results)[0];
+    return hit
+      ? { icon: MapPin, title: `ম্যাপে ${place} পাওয়া গেছে`, detail: str(hit.display_name) || undefined }
+      : { icon: MapPin, title: `ম্যাপে ${place} পাওয়া যায়নি` };
   },
 };
 
