@@ -1,0 +1,173 @@
+"""Tracking a crop problem's treatment plan with the farmer, in a pane beside
+the web chat (cases.py has the data and the rules).
+
+Once a diagnosis is made and the farmer is going to treat it, the agent starts
+a case: the plan as dated steps, from today to the last check. As the farmer
+does steps and reports how the plants look, the agent records it, adjusts the
+plan, and escalates to an officer when it is getting worse.
+
+Each tool returns the case, as the web UI shows it, as the ToolMessage's
+`artifact`, which the model never sees; the UI opens or refreshes the pane
+from it. The model gets the plan in a compact form, with the ids it needs for
+the next change.
+
+A case belongs to the farmer (their phone), not to the thread: the system
+prompt lists the open ones every turn, so the agent picks up where the farmer
+left off in any conversation.
+
+The store blocks, so these are sync tools: LangChain runs them in a thread.
+"""
+
+from langchain.tools import ToolException, ToolRuntime, tool
+
+from meta_hackathon.agent.context import UserContext, phone_number
+from meta_hackathon.cases import (
+    CaseError,
+    Confidence,
+    PhotoInput,
+    PlanStepInput,
+    Stage,
+    StepChange,
+    case_for_model,
+    case_view,
+    change_case,
+    create_case,
+    get_case,
+    list_cases,
+)
+
+_SHOWN = "The plan is shown in the tracker pane beside the chat; do not repeat the steps in your reply."
+
+
+def _phone(runtime: ToolRuntime) -> str:
+    phone = phone_number(runtime)
+    if not phone:
+        raise ToolException("No farmer identity on this request, so there is nowhere to save a case.")
+    return phone
+
+
+@tool(response_format="content_and_artifact")
+def start_crop_case(
+    crop: str,
+    problem: str,
+    steps: list[PlanStepInput],
+    confidence: Confidence,
+    *,
+    runtime: ToolRuntime[UserContext],
+    diagnosis: str = "",
+    plot: str = "",
+    warning_signs: list[str] | None = None,
+    next_step: str = "",
+    end_date: str | None = None,
+) -> tuple[str, dict]:
+    """Start tracking a crop problem's treatment plan, in a pane beside the chat.
+
+    Use it once you have diagnosed a problem (from a photo or a clear description)
+    and given the treatment, so the farmer can follow the plan day by day. Not for
+    general questions, and not when you are unsure what the problem is.
+
+    - crop, problem: Bangla, e.g. "ধান", "ধানের ব্লাস্ট রোগ". plot: which field, if the farmer said.
+    - diagnosis: one Bangla sentence on what you saw and why you think so.
+    - confidence: high, medium or low.
+    - steps: the plan in order. "action" steps are what the farmer does (spray, drain water,
+      remove leaves), with the dose and time in `details` and PPE / waiting period in
+      `safety_note`. Add "check" steps for follow-ups: a midpoint check and a final check
+      for plans of 4-7 days, every 3-4 days for longer ones. Give every step a `due` date.
+    - warning_signs: up to 4 short Bangla signs that mean "tell us at once".
+    - next_step: the first thing to do, in one Bangla sentence.
+    - end_date: YYYY-MM-DD of the last check; defaults to the last step's date.
+    """
+    try:
+        case = create_case(
+            _phone(runtime),
+            crop=crop,
+            problem=problem,
+            plot=plot,
+            diagnosis=diagnosis,
+            confidence=confidence,
+            steps=steps,
+            warning_signs=warning_signs or [],
+            next_step=next_step,
+            end_date=end_date,
+            thread_id=(runtime.config or {}).get("configurable", {}).get("thread_id"),
+        )
+    except CaseError as e:
+        raise ToolException(f"The case was not started: {e}") from e
+    view = case_view(case)
+    return f"Started the case. {_SHOWN}\n{case_for_model(view)}", view
+
+
+@tool(response_format="content_and_artifact")
+def update_crop_case(
+    case_id: str,
+    *,
+    runtime: ToolRuntime[UserContext],
+    steps: list[StepChange] | None = None,
+    add_steps: list[PlanStepInput] | None = None,
+    remove_step_ids: list[str] | None = None,
+    add_photo: PhotoInput | None = None,
+    stage: Stage | None = None,
+    next_step: str | None = None,
+    end_date: str | None = None,
+    warning_signs: list[str] | None = None,
+) -> tuple[str, dict]:
+    """Record progress on one of the farmer's crop cases.
+
+    - steps: changes to existing steps by step_id. Mark an action "done" when the farmer
+      says they did it. For a check, set `outcome` (better, same, worse) from what the
+      farmer reports or what a new photo shows, with a `note` on what you see; use status
+      "attention" when it is worse or something went wrong. `due` moves a step.
+    - add_steps / remove_step_ids: when the plan changes (e.g. a second spray, another check).
+    - add_photo: after segment_image on a follow-up photo, file its annotated_image_url
+      with a caption, so before and after can be compared.
+    - stage: in_treatment, escalated (worse, or an officer is needed), resolved (recovered),
+      abandoned (the farmer stopped).
+    - next_step: the one thing to do next, in one Bangla sentence. Update it with every change.
+    - end_date: YYYY-MM-DD. When it moves, move the steps' dates too.
+
+    All the changes are made together, or none are.
+    """
+    try:
+        case = change_case(
+            _phone(runtime),
+            case_id,
+            changes=steps or [],
+            add_steps=add_steps or [],
+            remove_step_ids=remove_step_ids or [],
+            add_photo=add_photo,
+            stage=stage,
+            next_step=next_step,
+            end_date=end_date,
+            warning_signs=warning_signs,
+        )
+    except CaseError as e:
+        raise ToolException(f"Nothing was changed: {e}") from e
+    view = case_view(case)
+    return f"Updated the case. {_SHOWN}\n{case_for_model(view)}", view
+
+
+@tool(response_format="content_and_artifact")
+def get_crop_case(*, runtime: ToolRuntime[UserContext], case_id: str | None = None) -> tuple[str, dict | None]:
+    """Read one of the farmer's crop cases in full and show it in the tracker pane,
+    or, without case_id, list all of them.
+
+    Read a case before changing it if you have not seen its steps in this
+    conversation, and when the farmer asks how their treatment is going.
+    """
+    phone = _phone(runtime)
+    if case_id is None:
+        cases = list_cases(phone)
+        if not cases:
+            return "The farmer has no crop cases.", None
+        lines = [f"- {c['problem']} on {c['crop']} (case_id: {c['id']}) -- {c['stage']}" for c in cases]
+        return "The farmer's crop cases:\n" + "\n".join(lines), None
+    case = get_case(phone, case_id)
+    if case is None:
+        raise ToolException(f"The farmer has no case {case_id}.")
+    view = case_view(case)
+    return f"{_SHOWN}\n{case_for_model(view)}", view
+
+
+for _t in (start_crop_case, update_crop_case, get_crop_case):
+    # A ToolException becomes an error ToolMessage the model can read and fix.
+    _t.handle_tool_error = True
