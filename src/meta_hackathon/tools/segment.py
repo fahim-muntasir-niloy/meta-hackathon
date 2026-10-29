@@ -16,7 +16,9 @@ from openai import AsyncOpenAI, OpenAIError
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, Field
 
+from meta_hackathon.agent.context import phone_number
 from meta_hackathon.config import settings
+from meta_hackathon.gallery import media_url, record_image
 
 _client = AsyncOpenAI(base_url=settings.META_BASE_URL, api_key=settings.META_API_KEY)
 _FONT = Path(__file__).parent.parent / "assets" / "fonts" / "HindSiliguri-SemiBold.ttf"
@@ -165,5 +167,10 @@ async def segment_image(targets: list[Target], photo: int = 1, *, runtime: ToolR
     }
     if found:
         name = await asyncio.to_thread(_draw_and_save, img, found)
-        out["annotated_image_url"] = f"{settings.PUBLIC_BASE_URL.rstrip('/')}/media/{name}"
+        out["annotated_image_url"] = media_url(name)
+        # Filed in the farmer's photo folder in the web UI.
+        if phone := phone_number(runtime):
+            thread_id = (runtime.config or {}).get("configurable", {}).get("thread_id")
+            labels = [{"label": f["label"], "count": f["count"]} for f in out["found"]]
+            await asyncio.to_thread(record_image, phone, name, thread_id=thread_id, labels=labels)
     return out
