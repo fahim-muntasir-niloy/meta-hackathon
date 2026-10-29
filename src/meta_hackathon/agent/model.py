@@ -6,7 +6,8 @@ from meta_hackathon.config import settings
 # `search_internet` tool (see tools/web_search.py).
 llm = ChatOpenAI(
     model=settings.MODEL_NAME,
-    reasoning_effort="low",
+    reasoning_effort="medium",
     base_url=settings.META_BASE_URL,
     api_key=settings.META_API_KEY,
+    max_retries=3
 )
