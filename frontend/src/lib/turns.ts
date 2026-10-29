@@ -12,6 +12,8 @@ export type Step = {
   args: Record<string, unknown>;
   status: StepStatus;
   result: unknown;
+  /** What the tool returned for the UI only (the ToolMessage artifact), e.g. a crop case. */
+  artifact?: unknown;
 };
 
 export type Turn =
@@ -36,11 +38,11 @@ function parseResult(content: string): unknown {
 }
 
 export function buildTurns(messages: BaseMessage[], isLoading: boolean): Turn[] {
-  const results = new Map<string, { content: unknown; error: boolean }>();
+  const results = new Map<string, { content: unknown; error: boolean; artifact?: unknown }>();
   for (const m of messages) {
     if (m.type === "tool") {
-      const tm = m as BaseMessage & { tool_call_id: string; status?: string };
-      results.set(tm.tool_call_id, { content: parseResult(messageText(m)), error: tm.status === "error" });
+      const tm = m as BaseMessage & { tool_call_id: string; status?: string; artifact?: unknown };
+      results.set(tm.tool_call_id, { content: parseResult(messageText(m)), error: tm.status === "error", artifact: tm.artifact });
     }
   }
 
@@ -70,6 +72,7 @@ export function buildTurns(messages: BaseMessage[], isLoading: boolean): Turn[] 
           args: tc.args ?? {},
           status: res ? (res.error ? "error" : "done") : isLoading ? "running" : "stopped",
           result: res?.content,
+          artifact: res?.artifact,
         });
       }
     } else if (messageText(m).trim()) {

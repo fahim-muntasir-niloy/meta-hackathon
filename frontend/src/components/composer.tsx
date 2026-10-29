@@ -1,22 +1,36 @@
 "use client";
 
 import { ArrowUp, Plus, Square, X } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { bnDigits } from "@/lib/bn";
 import { MAX_IMAGES, toDataUrl } from "@/lib/images";
+
+export type ComposerHandle = {
+  /** Open the photo picker with `text` ready to send alongside, e.g. for a step of the plan. */
+  pickPhotos: (text: string) => void;
+};
 
 type Props = {
   onSend: (text: string, images: string[]) => void;
   onStop: () => void;
   isLoading: boolean;
+  ref?: Ref<ComposerHandle>;
 };
 
-export function Composer({ onSend, onStop, isLoading }: Props) {
+export function Composer({ onSend, onStop, isLoading, ref: handle }: Props) {
   const [text, setText] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(handle, () => ({
+    pickPhotos: (draft: string) => {
+      setText(draft);
+      fileRef.current?.click();
+      ref.current?.focus();
+    },
+  }));
 
   useLayoutEffect(() => {
     const el = ref.current;
