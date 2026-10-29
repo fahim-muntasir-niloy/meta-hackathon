@@ -35,7 +35,15 @@ export function encodeFormMessage(label: string, answers: FormAnswers): string {
   return lines.length ? `${label}${MARKER}${lines.join("\n")}` : label;
 }
 
-export function decodeFormMessage(text: string): { label: string; answers: FormAnswers } {
+// Ids from the tracker pane (case_id, step_id, outcome): for the model, not the bubble.
+const DETAILS = /\n\n\(Details: (\{[^\n]*\})\)$/;
+
+export function withDetails(text: string, details?: Record<string, string>): string {
+  return details && Object.keys(details).length ? `${text}\n\n(Details: ${JSON.stringify(details)})` : text;
+}
+
+export function decodeFormMessage(message: string): { label: string; answers: FormAnswers } {
+  const text = message.replace(DETAILS, "");
   const at = text.indexOf(MARKER);
   if (at < 0) return { label: text, answers: {} };
   const answers: FormAnswers = {};

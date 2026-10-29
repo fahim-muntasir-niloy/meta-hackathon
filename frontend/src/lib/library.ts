@@ -5,12 +5,42 @@
  */
 import { openuiChatLibrary } from "@openuidev/react-ui/genui-lib";
 import { openuiChatPromptOptions } from "@openuidev/react-ui/genui-lib/prompt-options";
-import type { PromptOptions } from "@openuidev/react-lang";
+import { createLibrary, defineComponent, type PromptOptions } from "@openuidev/react-lang";
+import { chartRenderers } from "@/components/genui/charts";
+import { BentoGrid, BentoItem } from "@/components/genui/bento";
 import { GeoMap, MapMarker } from "@/components/genui/map";
+import { PesticideCard, PesticideCards } from "@/components/genui/pesticide";
+
+// The stock charts with renderers that follow the app's theme (see charts.tsx); same props.
+const charts = Object.entries(chartRenderers).map(([name, component]) => {
+  const stock = openuiChatLibrary.components[name];
+  return defineComponent({ name, props: stock.props, description: stock.description, component });
+});
+
+// The stock library minus its advice to use placeholder image services: every image comes
+// from search_images or segment_image.
+const stock = createLibrary({
+  root: openuiChatLibrary.root,
+  components: Object.values(openuiChatLibrary.components),
+  componentGroups: openuiChatLibrary.componentGroups?.map((group) => ({
+    ...group,
+    notes: group.notes?.filter((note) => !/picsum/i.test(note)),
+  })),
+});
 
 // Created at module scope: parsers memoize by library identity.
-export const library = openuiChatLibrary.extend({
-  components: { add: [{ component: GeoMap, slots: ["Card.children", "TabItem.content"] }, MapMarker] },
+export const library = stock.extend({
+  components: {
+    add: [
+      { component: GeoMap, slots: ["Card.children", "TabItem.content"] },
+      MapMarker,
+      { component: BentoGrid, slots: ["Card.children", "TabItem.content"] },
+      BentoItem,
+      { component: PesticideCards, slots: ["Card.children", "TabItem.content"] },
+      PesticideCard,
+    ],
+    override: charts,
+  },
 });
 
 export const promptOptions: PromptOptions = {
@@ -18,8 +48,9 @@ export const promptOptions: PromptOptions = {
   additionalRules: [
     ...(openuiChatPromptOptions.additionalRules ?? []),
     "Write all user-facing text in simple Bangla, including headings, buttons, form labels, placeholders and follow-ups, even if the farmer writes in English. Keep it short and practical.",
-    "When advice comes from search_knowledgebase or search_internet, pass those results as Card sources and cite them inline as [1], [2]. Only set a source url if the tool result contains one; never invent URLs.",
+    "When you recommend a pesticide from find_registered_pesticides, show the 1-3 choices as PesticideCards (never a Table), each PesticideCard filled from that tool's result, with hazard copied from human_hazard.who_class and hazardNote from human_hazard.note; when the most hazardous choice is class Ia/Ib, put a safer registered one first and say why. Add the DAE register as a Card source (no url). When advice comes from search_knowledgebase or search_internet, pass those results as Card sources and cite them inline as [1], [2]. Only set a source url if the tool result contains one; never invent URLs.",
     "For a diagnosis, lead with a Callout naming the likely problem and your confidence, then numbered Steps for what to do.",
+    "Images come only from tool results: segment_image's annotated_image_url and search_images. Never write an image URL yourself. Show search_images photos in a BentoGrid (even a single photo; never ImageBlock or Image for them), one BentoItem per photo (the clearest first, it is shown large): Bangla title and one-line description of what to notice, image = url, credit = \"author, license\", source = page. Do not repeat the credits in text. Use reference photos to help the farmer recognise a problem, next to their own annotated photo when there is one (that one with ImageBlock).",
     "When a tool returns an image URL, show it with Image or ImageBlock. After segment_image, show its annotated_image_url near the top with ImageBlock, then explain each marked label in plain words (what it is, how serious, how much of the photo it covers).",
     "Show weather charts only when the farmer asks about the weather or forecast. When you checked the weather just to time advice (spraying, fertiliser, harvest) or for a diagnosis, do not show charts; say it in one or two sentences or a Callout (e.g. \"কাল বৃষ্টি হবে, পরশু স্প্রে করুন\"). When weather charts are shown: never as a Table. Use Tabs with two TabItems: \"আগামী ২৪ ঘণ্টা\" (labels from next_24h[].label: LineChart of temp_c, and BarChart of rain_chance_pct) and \"দৈনিক পূর্বাভাস\" (labels from forecast[].label: LineChart with two Series, সর্বোচ্চ and সর্বনিম্ন temperature, and BarChart of rain_chance_pct; add rain_mm as a second BarChart Series when it rains). Put the tab for the farmer's question first. Use the \"natural\" variant for lines, Bangla Series names and axis labels with units (°সে, %, মিমি). Before the charts, say in one Callout whether the coming hours/days suit the planned field work.",
     "Use a Map only when it shows something beyond the farmer's own location: two or more places (farmer and the officer's office after a booking, nearby markets, places being compared), or an area such as an outbreak zone (radiusKm). Never add a Map that is just a single pin of the farmer's area unless they ask to see it on a map. Reuse lat/lng from a get_weather result's place; call geocode_location only for places not located yet. Never guess coordinates. Label pins in Bangla.",

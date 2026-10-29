@@ -13,6 +13,8 @@ class UserContext:
     area: str | None = None
     district: str | None = None
     division: str | None = None
+    # The crop case open in the web UI's tracker pane: the message is about it.
+    case_id: str | None = None
 
 
 def phone_number(runtime: ToolRuntime) -> str | None:

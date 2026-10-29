@@ -1,4 +1,5 @@
 from langchain.agents import create_agent
+from langchain.agents.middleware import ToolCallLimitMiddleware
 from langgraph.types import Checkpointer
 
 from meta_hackathon.agent.context import UserContext
@@ -15,7 +16,12 @@ def build_agent(*, reply_format: ReplyFormat = "text", checkpointer: Checkpointe
     return create_agent(
         model=llm,
         tools=ALL_TOOLS,
-        middleware=[system_prompt(reply_format), content_filter_guard(reply_format)],
+        middleware=[
+            system_prompt(reply_format),
+            content_filter_guard(reply_format),
+            # One search covers every subject of a reply; a second is for a retry with other words.
+            ToolCallLimitMiddleware(tool_name="search_images", run_limit=2),
+        ],
         context_schema=UserContext,
         checkpointer=checkpointer,
         name="krishi_advisor",

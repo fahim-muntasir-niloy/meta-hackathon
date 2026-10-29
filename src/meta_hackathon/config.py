@@ -12,6 +12,8 @@ class Config(BaseSettings):
     # Annotated images are saved here and served at {PUBLIC_BASE_URL}/media/<file>.
     MEDIA_DIR: str = ".media"
     PUBLIC_BASE_URL: str = "http://localhost:2024"
+    # SQLite database for crop cases (cases.py).
+    DATA_DIR: str = ".data"
 
     LANGSMITH_TRACING: str
     LANGSMITH_ENDPOINT: str
