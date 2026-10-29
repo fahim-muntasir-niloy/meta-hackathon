@@ -14,7 +14,10 @@ from meta_hackathon.config import settings, setup_langsmith
 setup_langsmith()
 
 from meta_hackathon.agent.build_agent import build_agent  # noqa: E402
+from meta_hackathon.api.cases import router as cases_router  # noqa: E402
 from meta_hackathon.api.chat import router as chat_router  # noqa: E402
+from meta_hackathon.api.images import router as images_router  # noqa: E402
+from meta_hackathon.api.pesticides import router as pesticides_router  # noqa: E402
 
 
 @asynccontextmanager
@@ -25,6 +28,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="KrishiBondhu.AI", version="0.1.0", lifespan=lifespan)
 app.include_router(chat_router)
+app.include_router(cases_router)
+app.include_router(images_router)
+app.include_router(pesticides_router)
 
 
 @app.exception_handler(openai.BadRequestError)
