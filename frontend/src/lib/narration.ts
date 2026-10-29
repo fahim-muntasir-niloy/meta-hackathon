@@ -3,7 +3,7 @@
  * "বগুড়ার ৩ দিনের আবহাওয়ার পূর্বাভাস দেখছি" → "বগুড়ার আবহাওয়া দেখা হয়েছে".
  */
 import type { LucideIcon } from "lucide-react";
-import { BookOpenCheck, CalendarCheck, CloudSun, Globe, MapPin, ScanSearch, Wrench } from "lucide-react";
+import { BookOpenCheck, CalendarCheck, ClipboardList, CloudSun, FlaskConical, Globe, Images, MapPin, ScanSearch, Wrench } from "lucide-react";
 import { bnDateTime, bnDigits, term } from "./bn";
 
 export type StepStatus = "running" | "done" | "error" | "stopped";
@@ -87,6 +87,63 @@ const narrators: Record<string, Narrator> = {
         }
       : { icon: ScanSearch, title: "ছবিতে চিহ্নিত করার মতো কিছু পাওয়া যায়নি" };
   },
+
+  find_registered_pesticides: (args, status, result) => {
+    const what = `${str(args.crop)}-এর ${str(args.pest, "সমস্যা")}`;
+    if (status !== "done") return { icon: FlaskConical, title: `DAE-র নিবন্ধিত কীটনাশকের তালিকায় ${what}-এর ওষুধ খুঁজছি` };
+    const r = (result ?? {}) as Args;
+    const ingredients = asArray(r.ingredients);
+    return {
+      icon: FlaskConical,
+      title: ingredients.length
+        ? `${bnDigits(Number(r.total_products ?? 0))}টি নিবন্ধিত পণ্য, ${bnDigits(Number(r.total_ingredients ?? 0))}টি উপাদান পাওয়া গেছে`
+        : `${what}-এর জন্য নিবন্ধিত কোনো ওষুধ পাওয়া যায়নি`,
+      detail: ingredients.slice(0, 4).map((i) => str(i.active_ingredient)).join(" · ") || undefined,
+    };
+  },
+
+  lookup_pesticide_product: (args, status, result) => {
+    if (status !== "done") return { icon: FlaskConical, title: `নিবন্ধিত তালিকায় ${quote(args.query)} যাচাই করছি` };
+    const products = asArray((result as Args | undefined)?.products);
+    return products.length
+      ? {
+          icon: FlaskConical,
+          title: `${str(products[0].brand)} নিবন্ধিত (${str(products[0].reg_no)})`,
+          detail: `${str(products[0].active_ingredient)} · ${str(products[0].holder)}`,
+        }
+      : { icon: FlaskConical, title: `${quote(args.query)} নিবন্ধিত তালিকায় পাওয়া যায়নি` };
+  },
+
+  search_images: (args, status, result) => {
+    const queries = Array.isArray(args.queries) ? args.queries.map((q) => str(q)).filter(Boolean) : [];
+    if (status !== "done") return { icon: Images, title: `উইকিমিডিয়া কমন্সে ${queries.map(quote).join(", ") || "ছবি"} খুঁজছি` };
+    const found = Object.values(((result as Args | undefined)?.images ?? {}) as Record<string, unknown>).flatMap(asArray);
+    return {
+      icon: Images,
+      title: found.length ? `${bnDigits(found.length)}টি উদাহরণ ছবি পাওয়া গেছে` : "মিলে যায় এমন ছবি পাওয়া যায়নি",
+      detail: found.map((img) => str(img.title)).join(" · ") || undefined,
+    };
+  },
+
+  start_crop_case: (args, status) => {
+    const problem = str(args.problem, "সমস্যা");
+    if (status !== "done") return { icon: ClipboardList, title: `${problem}-এর চিকিৎসার পরিকল্পনা সাজাচ্ছি` };
+    return {
+      icon: ClipboardList,
+      title: `${problem}-এর পরিকল্পনা তৈরি হয়েছে`,
+      detail: `${bnDigits(asArray(args.steps).length)}টি ধাপ, পাশের প্যানেলে দেখুন`,
+    };
+  },
+
+  update_crop_case: (_args, status) =>
+    status !== "done"
+      ? { icon: ClipboardList, title: "চিকিৎসার পরিকল্পনায় লিখে রাখছি" }
+      : { icon: ClipboardList, title: "চিকিৎসার পরিকল্পনা আপডেট হয়েছে" },
+
+  get_crop_case: (_args, status) =>
+    status !== "done"
+      ? { icon: ClipboardList, title: "আপনার চিকিৎসার পরিকল্পনা দেখছি" }
+      : { icon: ClipboardList, title: "চিকিৎসার পরিকল্পনা দেখা হয়েছে" },
 
   geocode_location: (args, status, result) => {
     const place = str(args.place, "জায়গাটি");
