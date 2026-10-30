@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+import logging
 import re
 from pathlib import Path
 
@@ -12,6 +13,19 @@ from meta_hackathon.config import settings, setup_langsmith
 
 # Must run before any LangChain object is created so tracing picks up the env.
 setup_langsmith()
+
+# The Agent Server logs every outbound HTTP call, auth check, LangSmith
+# metadata upload and once-a-minute worker/queue stats at INFO; keep only
+# warnings from those and leave run lifecycle logs (Created run, ...) visible.
+for name in (
+    "httpx",
+    "httpx2",
+    "langgraph_api.auth.custom",
+    "langgraph_api.metadata",
+    "langgraph_api.metrics_collector",
+    "langgraph_runtime_inmem.queue",
+):
+    logging.getLogger(name).setLevel(logging.WARNING)
 
 from meta_hackathon.agent.build_agent import build_agent  # noqa: E402
 from meta_hackathon.api.cases import router as cases_router  # noqa: E402
