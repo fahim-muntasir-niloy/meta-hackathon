@@ -369,7 +369,7 @@ function Chat({ profile, onSignOut, mode, onToggleTheme }: ChatProps) {
               </button>
             </div>
           )}
-          <Composer ref={composerRef} onSend={send} onStop={() => void stream.stop()} isLoading={stream.isLoading} />
+          <Composer ref={composerRef} phone={phone} onSend={send} onStop={() => void stream.stop()} isLoading={stream.isLoading} />
           <p className="disclaimer">পরামর্শটি BRRI / DAE নির্দেশিকা থেকে AI দিয়ে তৈরি। রাসায়নিক ব্যবহারের আগে স্থানীয় কৃষি অফিসারের সাথে কথা বলুন।</p>
         </div>
       </main>
