@@ -3,7 +3,7 @@
  * steps (src/meta_hackathon/cases.py). The agent starts and updates them with
  * tools; the tracker pane reads them from the tool results and from /v1/cases.
  */
-import { API_URL, PHONE_HEADER } from "./config";
+import { API_HEADERS, API_URL, PHONE_HEADER } from "./config";
 
 export type StepStatus = "todo" | "done" | "attention" | "skipped";
 export type Outcome = "better" | "same" | "worse";
@@ -52,7 +52,7 @@ export const isCase = (value: unknown): value is CropCase =>
 async function api<T>(phone: string, path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}/v1/cases${path}`, {
     ...init,
-    headers: { ...init.headers, [PHONE_HEADER]: phone, ...(init.body ? { "Content-Type": "application/json" } : {}) },
+    headers: { ...API_HEADERS, ...init.headers, [PHONE_HEADER]: phone, ...(init.body ? { "Content-Type": "application/json" } : {}) },
   });
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;

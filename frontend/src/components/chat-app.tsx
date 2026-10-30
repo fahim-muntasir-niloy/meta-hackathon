@@ -31,7 +31,7 @@ import { ToolActivity } from "@/components/tool-activity";
 import { UserMessage } from "@/components/user-message";
 import { bnDigits } from "@/lib/bn";
 import { CASE_TOOLS, type CropCase, deleteCase, isCase, listCases, updateCase, updateStep } from "@/lib/cases";
-import { API_URL, ASSISTANT_ID, PHONE_HEADER } from "@/lib/config";
+import { API_HEADERS, API_URL, ASSISTANT_ID, PHONE_HEADER } from "@/lib/config";
 import { type GalleryImage, listImages } from "@/lib/gallery";
 import { decodeFormMessage, encodeFormMessage, flattenFormState, withDetails } from "@/lib/form-message";
 import { contentImages, imageBlock } from "@/lib/images";
@@ -102,7 +102,7 @@ type ChatProps = {
 
 function Chat({ profile, onSignOut, mode, onToggleTheme }: ChatProps) {
   const { phone, name } = profile;
-  const headers = useMemo(() => ({ [PHONE_HEADER]: phone }), [phone]);
+  const headers = useMemo(() => ({ ...API_HEADERS, [PHONE_HEADER]: phone }), [phone]);
   const client = useMemo(() => new Client({ apiUrl: API_URL, defaultHeaders: headers }), [headers]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
