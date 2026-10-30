@@ -8,6 +8,7 @@ class Config(BaseSettings):
     META_BASE_URL: str
     MODEL_NAME: str
     SEGMENT_MODEL_NAME: str = "sam-3.1"
+    TRANSCRIBE_MODEL_NAME: str = "muse-voice-transcribe-1.0"
 
     # Annotated images are saved here and served at {PUBLIC_BASE_URL}/media/<file>.
     MEDIA_DIR: str = ".media"

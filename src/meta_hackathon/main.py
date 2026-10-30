@@ -18,6 +18,7 @@ from meta_hackathon.api.cases import router as cases_router  # noqa: E402
 from meta_hackathon.api.chat import router as chat_router  # noqa: E402
 from meta_hackathon.api.images import router as images_router  # noqa: E402
 from meta_hackathon.api.pesticides import router as pesticides_router  # noqa: E402
+from meta_hackathon.api.voice import router as voice_router  # noqa: E402
 
 
 @asynccontextmanager
@@ -31,6 +32,7 @@ app.include_router(chat_router)
 app.include_router(cases_router)
 app.include_router(images_router)
 app.include_router(pesticides_router)
+app.include_router(voice_router)
 
 
 @app.exception_handler(openai.BadRequestError)
