@@ -13,6 +13,7 @@
   <img alt="LangGraph" src="https://img.shields.io/badge/LangGraph-agent-1C3C3C?style=flat-square">
   <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs">
   <img alt="Postgres" src="https://img.shields.io/badge/Postgres-RLS-336791?style=flat-square&logo=postgresql&logoColor=white">
+  <img alt="MIT License" src="https://img.shields.io/badge/License-MIT-green?style=flat-square">
   <img alt="Python 3.14" src="https://img.shields.io/badge/Python-3.14-3776AB?style=flat-square&logo=python&logoColor=white">
 </p>
 
@@ -105,12 +106,13 @@ frontend/           Next.js app: landing page, chat, plan pane
 assets/             banner, officer roster, reference data
 ```
 
-## Roadmap
+## Upcoming
 
-- [ ] WhatsApp and Messenger channels (the plain-text API is ready)
-- [ ] Follow-up reminders that message the farmer on the day a step is due
-- [ ] Hand-checked fertiliser schedules for the major crops
-- [ ] Real sign-in (today a phone number is the identity)
+- 💬 **WhatsApp and Messenger**: the same advisor where farmers already are; the plain-text chat API is ready for it.
+- ⏰ **Reminders on the day**: a message on the morning a step is due ("আজ দ্বিতীয় কিস্তি ইউরিয়া দিন"), and a nudge when a check goes unanswered.
+- 📞 **Voice replies for low-literacy users**: answers read aloud in Bangla, so a farmer who can't read can still use it end to end.
+- 🧮 **Verified fertiliser schedules**: BARC-recommended doses for the major crops built in, so cultivation plans don't depend on web search.
+- 🗺️ **Outbreak alerts for officers**: anonymised, district-level maps of what farmers are reporting, so officers can warn a whole area early.
 
 ## Data and credits
 
@@ -119,6 +121,11 @@ assets/             banner, officer roster, reference data
 - Weather by [Open-Meteo](https://open-meteo.com); maps © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
 - Reference and landing-page photos from [Wikimedia Commons](https://commons.wikimedia.org), credited where shown.
 - The officer roster in `assets/officers.csv` is **fictional** demo data.
+
+## License
+
+The code is under the [MIT License](LICENSE). The reference data (Krishoker Janala, the pesticide
+register, photos) belongs to its sources above and keeps their terms.
 
 > [!IMPORTANT]
 > KrishiBondhu is an AI assistant, not a replacement for your local agriculture officer. Always check

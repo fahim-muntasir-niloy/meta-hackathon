@@ -1,7 +1,8 @@
 [project]
 name = "meta-hackathon"
 version = "0.1.0"
-description = "Add your description here"
+description = "KrishiBondhu.AI: a Bangla crop-health advisor for Bangladeshi farmers (photo diagnosis, official advice, day-by-day plans, officer booking)"
+license = "MIT"
 readme = "README.md"
 authors = [
     { name = "Fahim Muntasir", email = "muntasirfahim.niloy@gmail.com" }
