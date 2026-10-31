@@ -39,6 +39,10 @@ from meta_hackathon.cases import (
 _SHOWN = "The plan is shown in the tracker pane beside the chat; do not repeat the steps in your reply."
 
 
+def _thread(runtime: ToolRuntime) -> str | None:
+    return (runtime.config or {}).get("configurable", {}).get("thread_id")
+
+
 def _phone(runtime: ToolRuntime) -> str:
     phone = phone_number(runtime)
     if not phone:
@@ -89,12 +93,68 @@ def start_crop_case(
             warning_signs=warning_signs or [],
             next_step=next_step,
             end_date=end_date,
-            thread_id=(runtime.config or {}).get("configurable", {}).get("thread_id"),
+            thread_id=_thread(runtime),
         )
     except CaseError as e:
         raise ToolException(f"The case was not started: {e}") from e
     view = case_view(case)
     return f"Started the case. {_SHOWN}\n{case_for_model(view)}", view
+
+
+@tool(response_format="content_and_artifact")
+def start_cultivation_plan(
+    crop: str,
+    title: str,
+    start_date: str,
+    anchor_label: str,
+    steps: list[PlanStepInput],
+    *,
+    runtime: ToolRuntime[UserContext],
+    goal: str = "",
+    plot: str = "",
+    warning_signs: list[str] | None = None,
+    next_step: str = "",
+) -> tuple[str, dict]:
+    """Start a plan for growing something, start to finish, in the pane beside the chat:
+    a crop season (Boro rice, potato, mustard), mushrooms, a seedbed, or a fertiliser or
+    irrigation schedule. For a crop problem use start_crop_case instead.
+
+    Ask first for what you need: the crop and variety, how much land, and the start date
+    (when they sowed, transplanted or will; for mushrooms, the spawning day).
+
+    - title: Bangla, e.g. "বোরো ধান চাষ (ব্রি ধান৮৯)", "ঝিনুক মাশরুম চাষ".
+    - start_date: YYYY-MM-DD of day 0; anchor_label says what day 0 is, e.g. "চারা রোপণ",
+      "বীজ বপন", "স্পন রাখা".
+    - goal: one Bangla sentence, e.g. "৩ বিঘায় বোরো ধান, হেক্টরে ৭ টনের লক্ষ্য".
+    - steps: every step with `day` (days from start_date; negative before it, e.g. seedbed
+      at -35) and `phase` (জমি তৈরি, বীজতলা, রোপণ, সার প্রয়োগ, সেচ, আগাছা দমন, রোগ-পোকা নজর,
+      ফসল কাটা ...), in order. Doses and amounts per bigha in `details`, with `source` for
+      every dose. Add "check" steps at key stages (e.g. tillering, flowering) to look at the
+      crop and send a photo. Up to 40 steps; keep each one a real task.
+    - warning_signs: up to 4 short Bangla signs to report at once.
+    - next_step: the first thing to do, one Bangla sentence.
+    """
+    try:
+        case = create_case(
+            _phone(runtime),
+            crop=crop,
+            problem=title,
+            plot=plot,
+            diagnosis=goal,
+            confidence=None,
+            steps=steps,
+            warning_signs=warning_signs or [],
+            next_step=next_step,
+            end_date=None,
+            thread_id=_thread(runtime),
+            plan_type="cultivation",
+            start_date=start_date,
+            anchor_label=anchor_label,
+        )
+    except CaseError as e:
+        raise ToolException(f"The plan was not started: {e}") from e
+    view = case_view(case)
+    return f"Started the plan. {_SHOWN}\n{case_for_model(view)}", view
 
 
 @tool(response_format="content_and_artifact")
@@ -109,9 +169,10 @@ def update_crop_case(
     stage: Stage | None = None,
     next_step: str | None = None,
     end_date: str | None = None,
+    start_date: str | None = None,
     warning_signs: list[str] | None = None,
 ) -> tuple[str, dict]:
-    """Record progress on one of the farmer's crop cases.
+    """Record progress on one of the farmer's plans (treatment or cultivation).
 
     - steps: changes to existing steps by step_id. Mark an action "done" when the farmer
       says they did it. For a check, set `outcome` (better, same, worse) from what the
@@ -124,6 +185,10 @@ def update_crop_case(
       abandoned (the farmer stopped).
     - next_step: the one thing to do next, in one Bangla sentence. Update it with every change.
     - end_date: YYYY-MM-DD. When it moves, move the steps' dates too.
+    - start_date: cultivation plans, YYYY-MM-DD: when day 0 turns out to be another day (the
+      farmer transplanted later); every step counted from it moves with it.
+    - stage for a cultivation plan: escalated when a problem came up (then start a crop case
+      for it), resolved when harvested / finished.
 
     All the changes are made together, or none are.
     """
@@ -138,6 +203,7 @@ def update_crop_case(
             stage=stage,
             next_step=next_step,
             end_date=end_date,
+            start_date=start_date,
             warning_signs=warning_signs,
         )
     except CaseError as e:
@@ -168,6 +234,6 @@ def get_crop_case(*, runtime: ToolRuntime[UserContext], case_id: str | None = No
     return f"{_SHOWN}\n{case_for_model(view)}", view
 
 
-for _t in (start_crop_case, update_crop_case, get_crop_case):
+for _t in (start_crop_case, start_cultivation_plan, update_crop_case, get_crop_case):
     # A ToolException becomes an error ToolMessage the model can read and fix.
     _t.handle_tool_error = True

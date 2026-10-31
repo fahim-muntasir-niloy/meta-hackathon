@@ -1,8 +1,15 @@
-"""Crop cases KrishiBondhu tracks for a farmer: storage, the plan's rules, and
-how a case is shown to the web UI and to the model (docs/04-case-lifecycle.md).
+"""Plans KrishiBondhu tracks with a farmer ("cases"): storage, the rules, and
+how a plan is shown to the web UI and to the model (docs/04-case-lifecycle.md).
 
-A case is one crop problem (rice blast in one plot, aphids on brinjal in
-another) with a treatment plan: dated steps from today to the last check.
+Two kinds share one timeline of dated steps:
+
+- treatment: one crop problem (rice blast in one plot, aphids on brinjal in
+  another) with its treatment, from today to the last check.
+- cultivation: growing something, start to harvest (a Boro rice season, oyster
+  mushrooms at home, a fertiliser schedule). Steps are counted in days from a
+  start date (`start_date`, e.g. the transplanting day; `anchor_label` says
+  what it is), so when that date moves every step moves with it; they are
+  grouped into phases (জমি তৈরি, সার, সেচ, ফসল কাটা ...).
 
     {
         "id": "s3",                  # stable within the case
@@ -14,38 +21,46 @@ another) with a treatment plan: dated steps from today to the last check.
         "status": "todo",            # see Status
         "outcome": None,             # for checks: better | same | worse
         "note": "",                  # KrishiBondhu's comment on how it went
+        "phase": "সার প্রয়োগ",        # cultivation plans: the phase it belongs to ("" otherwise)
+        "day": 15,                   # days from the plan's start_date (negative = before it), or None
+        "source": "BRRI, আধুনিক ধানের চাষ",  # where a dose or timing comes from ("" if none)
     }
 
 Both the agent (tools/cases.py) and the farmer (the pane, api/cases.py) change
-a case. Every change reads and writes the row inside one write transaction, so
+a case. Every change reads the row FOR UPDATE and writes it in one transaction, so
 neither overwrites the other, and is logged to the case's `activity` -- who did
 what, newest last -- so the agent knows what the farmer did in the pane between
 messages.
 
-Stored with db.py: calls block, so async code runs them with asyncio.to_thread.
+Stored in Postgres with db.py, under row-level security per farmer. Calls
+block, so async code runs them with asyncio.to_thread.
 """
 
-import json
-import sqlite3
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from meta_hackathon.db import connect
+from psycopg import Connection
+from psycopg.types.json import Jsonb
+
+from meta_hackathon.db import farmer
 
 Kind = Literal["action", "check"]
 # todo: not yet. done: done, or a check answered. attention: something went
 # wrong (the note says what). skipped: does not apply any more.
 Status = Literal["todo", "done", "attention", "skipped"]
 Outcome = Literal["better", "same", "worse"]
+# For a cultivation plan: in_treatment = under way, escalated = a problem came up,
+# resolved = harvested / finished, abandoned = stopped.
 Stage = Literal["in_treatment", "escalated", "resolved", "abandoned"]
 Confidence = Literal["high", "medium", "low"]
+PlanType = Literal["treatment", "cultivation"]
 CLOSED_STAGES = {"resolved", "abandoned"}
 
-MAX_OPEN_CASES = 5
-MAX_STEPS = 20
+MAX_OPEN_CASES = 6
+MAX_STEPS_BY_TYPE = {"treatment": 20, "cultivation": 40}
 MAX_PHOTOS = 12
 MAX_ACTIVITY = 40
 MAX_TEXT = 300
@@ -66,7 +81,7 @@ def _iso_date(value: str | None) -> str | None:
 
 
 class PlanStepInput(BaseModel):
-    """One step of a treatment plan, as the agent writes it."""
+    """One step of a plan, as the agent writes it."""
 
     title: str = Field(description='Short Bangla instruction, e.g. "আক্রান্ত পাতা তুলে পুড়িয়ে ফেলুন".')
     kind: Kind = Field(
@@ -76,12 +91,32 @@ class PlanStepInput(BaseModel):
     )
     details: str = Field(default="", description="How exactly: dose, mixing, time of day, where. Bangla.")
     safety_note: str = Field(default="", description="PPE, pre-harvest interval, weather to avoid. Bangla. Empty if none.")
-    due: str | None = Field(default=None, description="YYYY-MM-DD to do it on.")
+    due: str | None = Field(
+        default=None, description="YYYY-MM-DD to do it on. In a cultivation plan, give `day` instead."
+    )
+    day: int | None = Field(
+        default=None,
+        description="Cultivation plans: days from the plan's start_date (0 = that day, negative = before it, "
+        "e.g. -25 for the seedbed when start_date is transplanting). The date is worked out from it.",
+    )
+    phase: str = Field(default="", description='Cultivation plans: Bangla phase, e.g. "জমি তৈরি", "সার প্রয়োগ", "ফসল কাটা".')
+    source: str = Field(
+        default="",
+        description="Where a dose, amount or timing comes from (organisation and document, or a search result's "
+        'title), e.g. "BRRI, আধুনিক ধানের চাষ". Required for any dose; empty for a common-sense step.',
+    )
 
     @field_validator("due")
     @classmethod
     def _due(cls, v):
         return _iso_date(v)
+
+    @field_validator("day")
+    @classmethod
+    def _day(cls, v):
+        if v is not None and not -400 <= v <= 400:
+            raise ValueError("day must be within 400 days of the start date")
+        return v
 
 
 class StepChange(BaseModel):
@@ -121,7 +156,24 @@ def _event(actor: Actor, text: str) -> dict:
     return {"at": _now(), "actor": actor, "text": text}
 
 
-def new_steps(inputs: list[PlanStepInput], start: int = 1) -> list[dict]:
+_BN_MONTHS = ("জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর")
+
+
+def _bn_date(iso: str) -> str:
+    """"২২ ডিসেম্বর" for the activity log (the web UI turns the digits Bangla)."""
+    d = date.fromisoformat(iso)
+    return f"{d.day} {_BN_MONTHS[d.month - 1]}"
+
+
+def _due_from(start_date: str | None, day: int | None) -> str | None:
+    if start_date is None or day is None:
+        return None
+    return (date.fromisoformat(start_date) + timedelta(days=day)).isoformat()
+
+
+def new_steps(inputs: list[PlanStepInput], start: int = 1, start_date: str | None = None) -> list[dict]:
+    """Steps as stored. A step with `day` gets its date from start_date (and keeps
+    `day`, so a moved start date moves it); one with only `due` keeps that date."""
     return [
         {
             "id": f"s{start + n}",
@@ -129,7 +181,10 @@ def new_steps(inputs: list[PlanStepInput], start: int = 1) -> list[dict]:
             "kind": step.kind,
             "details": _clip(step.details),
             "safety_note": _clip(step.safety_note),
-            "due": step.due,
+            "phase": _clip(step.phase, 40),
+            "day": step.day if start_date is not None else None,
+            "source": _clip(step.source, 160),
+            "due": step.due if step.day is None or start_date is None else _due_from(start_date, step.day),
             "status": "todo",
             "outcome": None,
             "note": "",
@@ -159,31 +214,62 @@ def next_due(steps: list[dict]) -> dict | None:
     return min(open_steps, key=lambda s: s.get("due") or "9999", default=None)
 
 
+_STEP_DEFAULTS = {"phase": "", "day": None, "source": ""}
+
+
+def normalized(case: dict) -> dict:
+    """Plans saved before cultivation plans existed are treatment plans."""
+    return {
+        "plan_type": "treatment",
+        "start_date": None,
+        "anchor_label": "",
+        **case,
+        "steps": [{**_STEP_DEFAULTS, **step} for step in case["steps"]],
+    }
+
+
 def case_view(case: dict) -> dict:
-    """A case as the web UI gets it: in a tool message's artifact and from the API."""
+    """A plan as the web UI gets it: in a tool message's artifact and from the API."""
+    case = normalized(case)
     return {**case, "progress": progress(case["steps"]), "activity": case["activity"][-20:]}
 
 
 def case_for_model(view: dict) -> str:
-    """The whole case in a compact form the agent can act on."""
+    """The whole plan in a compact form the agent can act on."""
     p = view["progress"]
+    cultivation = view["plan_type"] == "cultivation"
     lines = [
-        f"case_id: {view['id']}",
+        f"case_id: {view['id']} ({'cultivation plan' if cultivation else 'treatment plan'})",
         f"{view['problem']} on {view['crop']}" + (f" ({view['plot']})" if view["plot"] else "")
-        + f" -- stage: {view['stage']}, confidence: {view['confidence']}",
+        + f" -- stage: {view['stage']}" + ("" if cultivation else f", confidence: {view['confidence']}"),
         f"started {view['started_on']}" + (f", plan ends {view['end_date']}" if view["end_date"] else ""),
+    ]
+    if view["start_date"]:
+        lines.append(
+            f"start_date (day 0): {view['start_date']} = {view['anchor_label'] or 'start'}; "
+            "steps with a day move when start_date changes"
+        )
+    lines += [
         f"{p['done']} of {p['total']} steps done, {p['attention']} need attention.",
         f"next step shown: {view['next_step'] or '(none)'}",
         "steps:",
     ]
+    phase = None
     for s in view["steps"]:
+        if s["phase"] and s["phase"] != phase:
+            phase = s["phase"]
+            lines.append(f"  [{phase}]")
         line = f"- {s['id']} [{s['status']}] {s['title']} ({s['kind']})"
         if s.get("due"):
             line += f" due {s['due']}"
+        if s["day"] is not None:
+            line += f" (day {s['day']})"
         if s.get("outcome"):
             line += f" -- reported {s['outcome']}"
         if s["note"]:
             line += f" -- note: {s['note']}"
+        if s["source"]:
+            line += f" -- source: {s['source']}"
         lines.append(line)
     if view["photos"]:
         lines.append(f"{len(view['photos'])} photo(s) on file, latest: {view['photos'][-1]['caption'] or '(no caption)'}")
@@ -197,12 +283,15 @@ def case_for_model(view: dict) -> str:
 
 
 def summary_line(case: dict) -> str:
-    """One line per case, for the system prompt."""
+    """One line per plan, for the system prompt."""
+    case = normalized(case)
     p = progress(case["steps"])
     line = (
-        f"- {case['problem']} on {case['crop']} (case_id: {case['id']}) -- {case['stage']}, "
+        f"- {case['problem']} on {case['crop']} (case_id: {case['id']}, {case['plan_type']}) -- {case['stage']}, "
         f"{p['done']} of {p['total']} steps done" + (f", {p['attention']} need attention" if p["attention"] else "")
     )
+    if case["start_date"]:
+        line += f", day 0 = {case['start_date']} ({case['anchor_label'] or 'start'})"
     if case["end_date"]:
         line += f", plan ends {case['end_date']}"
     if due := next_due(case["steps"]):
@@ -214,6 +303,7 @@ def summary_line(case: dict) -> str:
 STATUS_WORDS = {"todo": "বাকি", "done": "সম্পন্ন", "attention": "নজর দরকার", "skipped": "বাদ"}
 OUTCOME_WORDS = {"better": "ভালো হচ্ছে", "same": "একই রকম", "worse": "খারাপ হচ্ছে"}
 STAGE_WORDS = {"in_treatment": "চিকিৎসা চলছে", "escalated": "অফিসারের কাছে", "resolved": "সেরে গেছে", "abandoned": "বন্ধ"}
+CULTIVATION_STAGE_WORDS = {"in_treatment": "চলছে", "escalated": "সমস্যা দেখা দিয়েছে", "resolved": "শেষ হয়েছে", "abandoned": "বন্ধ"}
 
 
 def _describe(before: dict, after: dict) -> list[str]:
@@ -233,44 +323,42 @@ def _describe(before: dict, after: dict) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Storage
+# Storage: crop_cases in Postgres, one jsonb document per case, only ever
+# touched inside db.farmer(phone), so row-level security limits every query to
+# that farmer's cases (sql/schema.sql).
 # ---------------------------------------------------------------------------
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS crop_cases (
-    id TEXT PRIMARY KEY,
-    phone TEXT NOT NULL,
-    data TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS crop_cases_phone ON crop_cases (phone, updated_at);
-"""
 
 
 def list_cases(phone: str, *, include_closed: bool = True) -> list[dict]:
-    with connect(_SCHEMA) as conn:
-        rows = conn.execute(
-            "SELECT data FROM crop_cases WHERE phone = ? ORDER BY updated_at DESC", (phone,)
-        ).fetchall()
-    cases = [json.loads(r[0]) for r in rows]
+    with farmer(phone) as conn:
+        return list_cases_in(conn, include_closed=include_closed)
+
+
+def list_cases_in(conn: Connection, *, include_closed: bool = True) -> list[dict]:
+    """The calling farmer's cases, newest first, in an open db.farmer() transaction."""
+    rows = conn.execute("SELECT data FROM crop_cases ORDER BY updated_at DESC").fetchall()
+    cases = [r["data"] for r in rows]
     return cases if include_closed else [c for c in cases if c["stage"] not in CLOSED_STAGES]
 
 
 def get_case(phone: str, case_id: str) -> dict | None:
-    with connect(_SCHEMA) as conn:
-        row = conn.execute("SELECT data FROM crop_cases WHERE id = ? AND phone = ?", (case_id, phone)).fetchone()
-    return json.loads(row[0]) if row else None
+    with farmer(phone) as conn:
+        row = conn.execute("SELECT data FROM crop_cases WHERE id = %s AND phone = %s", (case_id, phone)).fetchone()
+    return row["data"] if row else None
 
 
-def _write(conn: sqlite3.Connection, phone: str, case: dict, *, insert: bool = False) -> None:
+def _write(conn: Connection, phone: str, case: dict, *, insert: bool = False) -> None:
     case["updated_at"] = _now()
-    data = json.dumps(case, ensure_ascii=False)
     if insert:
         conn.execute(
-            "INSERT INTO crop_cases (id, phone, data, updated_at) VALUES (?, ?, ?, ?)",
-            (case["id"], phone, data, case["updated_at"]),
+            "INSERT INTO crop_cases (id, phone, data, updated_at) VALUES (%s, %s, %s, %s)",
+            (case["id"], phone, Jsonb(case), case["updated_at"]),
         )
     else:
-        conn.execute("UPDATE crop_cases SET data = ?, updated_at = ? WHERE id = ?", (data, case["updated_at"], case["id"]))
+        conn.execute(
+            "UPDATE crop_cases SET data = %s, updated_at = %s WHERE id = %s AND phone = %s",
+            (Jsonb(case), case["updated_at"], case["id"], phone),
+        )
 
 
 def create_case(
@@ -280,30 +368,37 @@ def create_case(
     problem: str,
     plot: str,
     diagnosis: str,
-    confidence: Confidence,
+    confidence: Confidence | None,
     steps: list[PlanStepInput],
     warning_signs: list[str],
     next_step: str,
     end_date: str | None,
     thread_id: str | None,
+    plan_type: PlanType = "treatment",
+    start_date: str | None = None,
+    anchor_label: str = "",
 ) -> dict:
     if not steps:
         raise CaseError("The plan is empty. List what the farmer should do and when to check in `steps`.")
-    if len(steps) > MAX_STEPS:
-        raise CaseError(f"The plan has more than {MAX_STEPS} steps. Merge the small ones.")
+    limit = MAX_STEPS_BY_TYPE[plan_type]
+    if len(steps) > limit:
+        raise CaseError(f"The plan has more than {limit} steps. Merge the small ones.")
     try:
-        end = _iso_date(end_date) or max((s.due for s in steps if s.due), default=None)
+        start = _iso_date(start_date)
+    except ValueError as e:
+        raise CaseError(f"start_date: {e}") from None
+    if start is None and any(s.day is not None for s in steps):
+        raise CaseError("Steps are given as `day`s, so start_date (the day they count from) is needed.")
+    built = new_steps(steps, start_date=start)
+    try:
+        end = _iso_date(end_date) or max((s["due"] for s in built if s["due"]), default=None)
     except ValueError as e:
         raise CaseError(f"end_date: {e}") from None
 
-    with connect(_SCHEMA) as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        open_count = sum(
-            json.loads(r[0])["stage"] not in CLOSED_STAGES
-            for r in conn.execute("SELECT data FROM crop_cases WHERE phone = ?", (phone,))
-        )
-        if open_count >= MAX_OPEN_CASES:
-            conn.execute("ROLLBACK")
+    with farmer(phone) as conn:
+        # Lock the farmer's row so two cases started at once cannot both pass the limit.
+        conn.execute("SELECT 1 FROM farmers WHERE phone = %s FOR UPDATE", (phone,))
+        if len(list_cases_in(conn, include_closed=False)) >= MAX_OPEN_CASES:
             raise CaseError(
                 f"The farmer already has {MAX_OPEN_CASES} open cases. Ask which one is over "
                 "(mark it resolved or abandoned) before starting another."
@@ -313,21 +408,23 @@ def create_case(
             "crop": _clip(crop, 40),
             "problem": _clip(problem, MAX_TITLE),
             "plot": _clip(plot, 60),
+            "plan_type": plan_type,
             "diagnosis": _clip(diagnosis),
-            "confidence": confidence,
+            "confidence": confidence or "high",
+            "start_date": start,
+            "anchor_label": _clip(anchor_label, 40),
             "stage": "in_treatment",
             "started_on": date.today().isoformat(),
             "end_date": end,
             "next_step": _clip(next_step),
             "warning_signs": [_clip(w, 160) for w in warning_signs[:6] if w.strip()],
-            "steps": new_steps(steps),
+            "steps": built,
             "photos": [],
             "thread_id": thread_id,
             "created_at": _now(),
             "activity": [_event(AGENT, f"{len(steps)}টি ধাপের পরিকল্পনা শুরু হলো")],
         }
         _write(conn, phone, case, insert=True)
-        conn.execute("COMMIT")
     return case
 
 
@@ -342,27 +439,51 @@ def change_case(
     stage: Stage | None = None,
     next_step: str | None = None,
     end_date: str | None = None,
+    start_date: str | None = None,
     warning_signs: list[str] | None = None,
     actor: Actor = AGENT,
 ) -> dict:
     """Apply a set of changes at once, and log them as `actor`'s; nothing is
-    saved if any of them fails."""
-    with connect(_SCHEMA) as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        try:
-            case = _apply(conn, phone, case_id, changes, add_steps, remove_step_ids, add_photo, stage, next_step, end_date, warning_signs, actor)
-        except Exception:
-            conn.execute("ROLLBACK")
-            raise
-        conn.execute("COMMIT")
-    return case
+    saved if any of them fails (the transaction rolls back)."""
+    with farmer(phone) as conn:
+        return apply_changes(
+            conn, phone, case_id,
+            changes=changes, add_steps=add_steps, remove_step_ids=remove_step_ids, add_photo=add_photo,
+            stage=stage, next_step=next_step, end_date=end_date, start_date=start_date,
+            warning_signs=warning_signs, actor=actor,
+        )
 
 
-def _apply(conn, phone, case_id, changes, add_steps, remove_step_ids, add_photo, stage, next_step, end_date, warning_signs, actor) -> dict:
-    row = conn.execute("SELECT data FROM crop_cases WHERE id = ? AND phone = ?", (case_id, phone)).fetchone()
+def log_event(conn: Connection, phone: str, case_id: str, text: str, *, actor: Actor = AGENT, stage: Stage | None = None) -> dict:
+    """Add one line to a case's activity (and optionally move its stage), in an open transaction."""
+    return apply_changes(conn, phone, case_id, stage=stage, note_event=text, actor=actor)
+
+
+def apply_changes(
+    conn: Connection,
+    phone: str,
+    case_id: str,
+    *,
+    changes: list[StepChange] = (),
+    add_steps: list[PlanStepInput] = (),
+    remove_step_ids: list[str] = (),
+    add_photo: PhotoInput | None = None,
+    stage: Stage | None = None,
+    next_step: str | None = None,
+    end_date: str | None = None,
+    start_date: str | None = None,
+    warning_signs: list[str] | None = None,
+    note_event: str | None = None,
+    actor: Actor = AGENT,
+) -> dict:
+    """change_case's work, in an open db.farmer() transaction."""
+    row = conn.execute(
+        "SELECT data FROM crop_cases WHERE id = %s AND phone = %s FOR UPDATE", (case_id, phone)
+    ).fetchone()
     if row is None:
         raise CaseError(f"No case {case_id} for this farmer.")
-    case = json.loads(row[0])
+    case = normalized(row["data"])
+    words = CULTIVATION_STAGE_WORDS if case["plan_type"] == "cultivation" else STAGE_WORDS
 
     steps = case["steps"]
     by_id = {s["id"]: s for s in steps}
@@ -383,6 +504,13 @@ def _apply(conn, phone, case_id, changes, add_steps, remove_step_ids, add_photo,
             step["note"] = _clip(change.note)
         if change.due is not None:
             step["due"] = change.due or None
+            # A step moved by hand keeps counting from the start date at its new place.
+            if step["day"] is not None:
+                step["day"] = (
+                    (date.fromisoformat(step["due"]) - date.fromisoformat(case["start_date"])).days
+                    if step["due"] and case["start_date"]
+                    else None
+                )
     for step_id in dict.fromkeys(c.step_id for c in changes):
         said += _describe(before[step_id], by_id[step_id])
 
@@ -392,10 +520,32 @@ def _apply(conn, phone, case_id, changes, add_steps, remove_step_ids, add_photo,
     steps = [s for s in steps if s["id"] not in removed]
     said += [f'"{before[i]["title"]}" বাদ দেওয়া হলো' for i in remove_step_ids]
 
-    added = new_steps(list(add_steps), start=_next_step_number(steps))
+    if start_date is not None:
+        try:
+            new_start = _iso_date(start_date)
+        except ValueError as e:
+            raise CaseError(f"start_date: {e}") from None
+        if new_start and new_start != case["start_date"]:
+            old = case["start_date"]
+            case["start_date"] = new_start
+            moved = 0
+            for step in steps:
+                if step["day"] is not None:
+                    step["due"] = _due_from(new_start, step["day"])
+                    moved += 1
+            if old and case["end_date"]:
+                shift = (date.fromisoformat(new_start) - date.fromisoformat(old)).days
+                case["end_date"] = (date.fromisoformat(case["end_date"]) + timedelta(days=shift)).isoformat()
+            label = case["anchor_label"] or "শুরুর তারিখ"
+            said.append(f"{label} সরে {_bn_date(new_start)} হলো" + (f"; {moved}টি ধাপের তারিখ সেই হিসাবে সরানো হলো" if moved else ""))
+
+    if any(s.day is not None for s in add_steps) and not case["start_date"]:
+        raise CaseError("New steps are given as `day`s, but this plan has no start_date; give `due` dates instead.")
+    added = new_steps(list(add_steps), start=_next_step_number(steps), start_date=case["start_date"])
     steps += added
-    if len(steps) > MAX_STEPS:
-        raise CaseError(f"The plan would have more than {MAX_STEPS} steps. Merge the small ones.")
+    limit = MAX_STEPS_BY_TYPE[case["plan_type"]]
+    if len(steps) > limit:
+        raise CaseError(f"The plan would have more than {limit} steps. Merge the small ones.")
     said += [f'নতুন ধাপ: "{s["title"]}"' for s in added]
     case["steps"] = steps
 
@@ -406,7 +556,7 @@ def _apply(conn, phone, case_id, changes, add_steps, remove_step_ids, add_photo,
         said.append("ছবি যোগ হলো" + (f": {add_photo.caption}" if add_photo.caption else ""))
     if stage is not None and stage != case["stage"]:
         case["stage"] = stage
-        said.append(f"অবস্থা: {STAGE_WORDS[stage]}")
+        said.append(f"অবস্থা: {words[stage]}")
     if next_step is not None:
         case["next_step"] = _clip(next_step)
     if warning_signs is not None:
@@ -419,6 +569,8 @@ def _apply(conn, phone, case_id, changes, add_steps, remove_step_ids, add_photo,
         if end != case["end_date"]:
             case["end_date"] = end
             said.append(f"শেষ চেকআপ {end}" if end else "শেষ চেকআপের তারিখ সরানো হলো")
+    if note_event:
+        said.append(_clip(note_event))
     if said:
         case["activity"] = [*case["activity"], *(_event(actor, t) for t in said)][-MAX_ACTIVITY:]
 
@@ -427,6 +579,6 @@ def _apply(conn, phone, case_id, changes, add_steps, remove_step_ids, add_photo,
 
 
 def delete_case(phone: str, case_id: str) -> bool:
-    with connect(_SCHEMA) as conn:
-        cur = conn.execute("DELETE FROM crop_cases WHERE id = ? AND phone = ?", (case_id, phone))
-    return cur.rowcount > 0
+    with farmer(phone) as conn:
+        cur = conn.execute("DELETE FROM crop_cases WHERE id = %s AND phone = %s", (case_id, phone))
+        return cur.rowcount > 0

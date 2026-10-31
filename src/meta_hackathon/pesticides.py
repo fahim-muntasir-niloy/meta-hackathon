@@ -4,7 +4,8 @@ crop and pest, at what dose.
 Source: DAE "List of Registered Agricultural Pesticides, Bio Pesticides and
 Public Health Pesticides", approved up to the 81st PTAC meeting (Dec 2020),
 extracted from the PDF by the separate pesticide-rag project (extract.py +
-build_db.py, not in this repo). assets/pesticides.db is its output: tables ingredients ->
+build_db.py, not in this repo). Its agri.db is loaded into Postgres's `agri`
+schema by `krishi-db load-agri` (dbcli.py): tables ingredients ->
 products -> recommendations (one row per product x crop x pest x dosage), plus
 `aliases` (BPH = brown planthopper ...) and the joined view `v_flat`.
 
@@ -12,19 +13,17 @@ A crop and pest can match hundreds of rows (rice + BPH: ~900 rows, 90
 ingredients), so results are grouped by active ingredient: what to buy is an
 ingredient, any of its registered brands will do.
 
-Plain sqlite3, read-only; calls block, so async code runs them in a thread.
+Read-only queries through db.reference_rows; calls block, so async code runs them in a thread.
 """
 
-import sqlite3
 from collections import Counter
 from functools import cache
-from pathlib import Path
 
 from rapidfuzz import fuzz, process
 
+from meta_hackathon.db import reference_rows
 from meta_hackathon.hazards import human_hazard
 
-DB_PATH = Path(__file__).parent / "assets" / "pesticides.db"
 HAZARD_SOURCE = "WHO Recommended Classification of Pesticides by Hazard (2019); acute risk to the person handling it"
 SOURCE = "DAE Bangladesh, registered agricultural pesticides, up to the 81st PTAC meeting (Dec 2020)"
 
@@ -35,19 +34,14 @@ MIN_MATCH_SCORE = 80
 
 
 def _rows(sql: str, params=()) -> list[dict]:
-    con = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
-    con.row_factory = sqlite3.Row
-    try:
-        return [dict(r) for r in con.execute(sql, params).fetchall()]
-    finally:
-        con.close()
+    return reference_rows(sql, params)
 
 
 @cache
 def _aliases() -> dict[str, dict[str, frozenset[str]]]:
     """field -> lowercase term -> every equivalent term (canonical + aliases)."""
     groups: dict[tuple[str, str], set[str]] = {}
-    for a in _rows("SELECT field, canonical, term FROM aliases"):
+    for a in _rows("SELECT field, canonical, term FROM agri.aliases"):
         groups.setdefault((a["field"], a["canonical"]), {a["canonical"]}).add(a["term"])
     out: dict[str, dict[str, frozenset[str]]] = {}
     for (field, _), terms in groups.items():
@@ -62,7 +56,7 @@ def _expand(field: str, term: str) -> set[str]:
 
 @cache
 def _vocab(column: str) -> tuple[str, ...]:
-    return tuple(r["v"] for r in _rows(f"SELECT DISTINCT {column} AS v FROM v_flat WHERE {column} IS NOT NULL"))
+    return tuple(r["v"] for r in _rows(f"SELECT DISTINCT {column} AS v FROM agri.v_flat WHERE {column} IS NOT NULL"))
 
 
 def resolve(column: str, term: str, limit: int = 3) -> list[str]:
@@ -83,7 +77,7 @@ def _like(column: str, terms: set[str]) -> tuple[str, list[str]]:
     clauses, params = [], []
     for term in terms:
         words = [w for w in term.replace("&", " ").split() if w.lower() not in _STOP_WORDS] or [term]
-        clauses.append("(" + " AND ".join(f"{column} LIKE ?" for _ in words) + ")")
+        clauses.append("(" + " AND ".join(f"{column} ILIKE %s" for _ in words) + ")")
         params += [f"%{w}%" for w in words]
     return "(" + " OR ".join(clauses) + ")", params
 
@@ -100,7 +94,7 @@ def _match(crop: str, pest: str, ingredient: str | None, category: str | None) -
             clause, p = _like(column, terms)
             where.append(clause)
             params += p
-    return _rows(f"SELECT * FROM v_flat WHERE {' AND '.join(where)}", params)
+    return _rows(f"SELECT * FROM agri.v_flat WHERE {' AND '.join(where)}", params)
 
 
 def _typical(products: list[dict]) -> list[dict]:
@@ -163,8 +157,8 @@ def lookup_product(query: str) -> dict:
     query = query.strip()
     products = _rows(
         """SELECT p.id, p.reg_no, p.brand, p.formulation, p.holder, p.page, i.name AS active_ingredient, i.category
-           FROM products p JOIN ingredients i ON i.id = p.ingredient_id
-           WHERE p.reg_no = ? COLLATE NOCASE OR p.brand LIKE ?
+           FROM agri.products p JOIN agri.ingredients i ON i.id = p.ingredient_id
+           WHERE lower(p.reg_no) = lower(%s) OR p.brand ILIKE %s
            LIMIT 5""",
         (query, f"%{query}%"),
     )
@@ -173,13 +167,13 @@ def lookup_product(query: str) -> dict:
         if brands:
             products = _rows(
                 f"""SELECT p.id, p.reg_no, p.brand, p.formulation, p.holder, p.page, i.name AS active_ingredient, i.category
-                    FROM products p JOIN ingredients i ON i.id = p.ingredient_id
-                    WHERE p.brand IN ({",".join("?" * len(brands))}) LIMIT 5""",
-                brands,
+                    FROM agri.products p JOIN agri.ingredients i ON i.id = p.ingredient_id
+                    WHERE p.brand = ANY(%s) LIMIT 5""",
+                (brands,),
             )
     for p in products:
         p["human_hazard"] = human_hazard(p["active_ingredient"])
         p["registered_uses"] = _rows(
-            "SELECT crop, pest, dosage FROM recommendations WHERE product_id = ?", (p.pop("id"),)
+            "SELECT crop, pest, dosage FROM agri.recommendations WHERE product_id = %s", (p.pop("id"),)
         )
     return {"query": query, "found": len(products), "products": products, "source": SOURCE}

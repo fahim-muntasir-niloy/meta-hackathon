@@ -26,3 +26,19 @@ async def owner_only(ctx: Auth.types.AuthContext, value: dict) -> dict:
     metadata = value.setdefault("metadata", {})
     metadata["owner"] = ctx.user.identity
     return {"owner": ctx.user.identity}
+
+
+@auth.on.store()
+async def own_memories_only(ctx: Auth.types.AuthContext, value: dict) -> None:
+    """The Agent Server's /store API: a farmer may only touch their own long-term
+    memory, the namespace ("memories", <their phone>) (tools/memory.py). The
+    agent's own store calls run inside the graph and are not routed through here."""
+    own = ("memories", ctx.user.identity)
+    namespace = tuple(value.get("namespace") or ())
+    if ctx.action == "list_namespaces":
+        if namespace[: len(own)] != own[: len(namespace)]:
+            raise Auth.exceptions.HTTPException(status_code=403, detail="Not your memory")
+        value["namespace"] = own
+        return
+    if namespace[:2] != own:
+        raise Auth.exceptions.HTTPException(status_code=403, detail="Not your memory")

@@ -21,15 +21,29 @@ export type PlanStep = {
   status: StepStatus;
   outcome: Outcome | null;
   note: string;
+  /** Cultivation plans: the phase it belongs to ("" otherwise). */
+  phase: string;
+  /** Days from the plan's start_date, or null. */
+  day: number | null;
+  /** Where a dose or timing comes from ("" if none). */
+  source: string;
 };
+
+/** treatment: a crop problem and its treatment. cultivation: growing something, start to harvest. */
+export type PlanType = "treatment" | "cultivation";
 
 export type CropCase = {
   id: string;
   crop: string;
   problem: string;
   plot: string;
+  plan_type: PlanType;
+  /** Treatment: the diagnosis. Cultivation: the goal. */
   diagnosis: string;
   confidence: "high" | "medium" | "low";
+  /** Cultivation plans: day 0 (YYYY-MM-DD), and what it is ("চারা রোপণ"). */
+  start_date: string | null;
+  anchor_label: string;
   stage: Stage;
   started_on: string;
   end_date: string | null;
@@ -44,7 +58,7 @@ export type CropCase = {
 };
 
 /** Tools whose result carries a case as the ToolMessage artifact. */
-export const CASE_TOOLS = new Set(["start_crop_case", "update_crop_case", "get_crop_case"]);
+export const CASE_TOOLS = new Set(["start_crop_case", "start_cultivation_plan", "update_crop_case", "get_crop_case"]);
 
 export const isCase = (value: unknown): value is CropCase =>
   !!value && typeof value === "object" && typeof (value as CropCase).id === "string" && Array.isArray((value as CropCase).steps);
@@ -75,7 +89,7 @@ export function updateStep(phone: string, caseId: string, stepId: string, patch:
   return api<CropCase>(phone, `/${caseId}/steps/${stepId}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
-export function updateCase(phone: string, caseId: string, patch: { stage?: Stage; end_date?: string }) {
+export function updateCase(phone: string, caseId: string, patch: { stage?: Stage; end_date?: string; start_date?: string }) {
   return api<CropCase>(phone, `/${caseId}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 

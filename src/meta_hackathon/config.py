@@ -10,10 +10,14 @@ class Config(BaseSettings):
     SEGMENT_MODEL_NAME: str = "sam-3.1"
     TRANSCRIBE_MODEL_NAME: str = "muse-voice-transcribe-1.0"
 
+    # Postgres: the app's records (db.py), conversation checkpoints and long-term memory
+    # (persistence.py), and the reference data in the `agri` schema. `uv run krishi-db migrate`.
+    DB_URI: str
+
     # Annotated images are saved here and served at {PUBLIC_BASE_URL}/media/<file>.
     MEDIA_DIR: str = ".media"
     PUBLIC_BASE_URL: str = "http://localhost:2024"
-    # SQLite database for crop cases (cases.py).
+    # The old SQLite file, read once by `krishi-db import-sqlite`.
     DATA_DIR: str = ".data"
 
     LANGSMITH_TRACING: str

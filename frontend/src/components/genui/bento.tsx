@@ -19,7 +19,7 @@ export const BentoItem = defineComponent({
     tag: z.string().optional(),
   }),
   description:
-    'One photo tile of a BentoGrid. image, credit ("author, license") and source (the Commons page) come from one search_images result; title and description in Bangla.',
+    'One photo tile of a BentoGrid, from one search_images result (image = url, credit = "<author>, <license>" from that result, source = its Commons page) or one get_crop_problem reference_photos entry (image = url, credit and source copied exactly, nothing added); title and description in Bangla.',
   component: () => null,
 });
 
@@ -59,7 +59,7 @@ function Tile({ item, index }: { item: Item; index: number }) {
         <p>{item.description}</p>
       </figcaption>
       {image && item.credit && (
-        <a className="bento-credit" href={source} target="_blank" rel="noopener noreferrer" title="উইকিমিডিয়া কমন্সে ছবিটি">
+        <a className="bento-credit" href={source} target="_blank" rel="noopener noreferrer" title="ছবির উৎস">
           © {item.credit}
         </a>
       )}
@@ -74,7 +74,7 @@ export const BentoGrid = defineComponent({
     title: z.string().optional(),
   }),
   description:
-    "Bento-style grid of 1-6 reference photos from search_images, the most useful one first (it is shown large). Tapping a photo opens it full size.",
+    "Bento-style grid of 1-6 reference photos from search_images or get_crop_problem, the most useful one first (it is shown large). Tapping a photo opens it full size.",
   component: ({ props }) => {
     // Items stream in one field at a time; only draw the ones with a title.
     const items = (props.items ?? [])

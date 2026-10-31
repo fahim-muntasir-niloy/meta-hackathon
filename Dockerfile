@@ -21,4 +21,5 @@ EXPOSE 2024
 # langgraph.json names ".env"; compose passes the settings as environment
 # variables and an empty file keeps the CLI happy.
 RUN touch .env
-CMD ["langgraph", "dev", "--host", "0.0.0.0", "--port", "2024", "--no-browser", "--no-reload"]
+# Apply the Postgres schema first (idempotent, a second or two), then serve.
+CMD ["sh", "-c", "krishi-db migrate && exec langgraph dev --host 0.0.0.0 --port 2024 --no-browser --no-reload"]
