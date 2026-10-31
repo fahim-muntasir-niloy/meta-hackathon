@@ -6,14 +6,16 @@ import type { ActionEvent } from "@openuidev/react-lang";
 import { ThemeProvider, useThemeModePreference } from "@openuidev/react-ui";
 import {
   AlertTriangle,
-  Bug,
   CalendarCheck,
   ClipboardList,
-  CloudSun,
+  FlaskConical,
   Leaf,
   LogOut,
+  Menu,
   MessageSquare,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Sprout,
   Sun,
@@ -22,25 +24,30 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AssistantReply } from "@/components/assistant-reply";
-import { CasePane, STAGE_LABELS } from "@/components/case-pane";
+import { BookingCard, BookingList } from "@/components/bookings";
+import { CasePane } from "@/components/case-pane";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { IconTile, type Tone } from "@/components/icon-tile";
 import { PhotoFolder } from "@/components/photo-folder";
+import { PlanFolder } from "@/components/plan-folder";
 import { PaneResizer, usePaneWidth } from "@/components/pane-resizer";
 import { ToolActivity } from "@/components/tool-activity";
 import { UserMessage } from "@/components/user-message";
 import { bnDigits } from "@/lib/bn";
+import { BOOKING_TOOLS, type Booking, cancelBooking, isBooking, listBookings } from "@/lib/bookings";
 import { CASE_TOOLS, type CropCase, deleteCase, isCase, listCases, updateCase, updateStep } from "@/lib/cases";
-import { API_URL, ASSISTANT_ID, PHONE_HEADER } from "@/lib/config";
+import { API_HEADERS, API_URL, ASSISTANT_ID, PHONE_HEADER } from "@/lib/config";
 import { type GalleryImage, listImages } from "@/lib/gallery";
 import { decodeFormMessage, encodeFormMessage, flattenFormState, withDetails } from "@/lib/form-message";
 import { contentImages, imageBlock } from "@/lib/images";
 import { placeLabel, profileContext, type Profile } from "@/lib/profile";
 import { buildTurns, type Step } from "@/lib/turns";
 
+const SIDEBAR_KEY = "krishi.sidebar";
+
 const BRAND = { light: "#1f7a4d", dark: "#4cc38a" };
 
-// Inter for Latin, Hind Siliguri for Bangla — also inside OpenUI-rendered replies.
+// Inter for Latin, Anek Bangla for Bangla — also inside OpenUI-rendered replies.
 const FONT_STACK = "var(--font-inter), var(--font-bangla), sans-serif";
 const FONTS = { fontBody: FONT_STACK, fontHeading: FONT_STACK, fontLabel: FONT_STACK };
 
@@ -52,16 +59,16 @@ const STARTERS: { icon: typeof Leaf; tone: Tone; title: string; prompt: string }
     prompt: "আমার ধানের পাতায় চোখের মতো দাগ পড়ছে। কী করব?",
   },
   {
-    icon: CloudSun,
+    icon: FlaskConical,
     tone: "cyan",
-    title: "এ সপ্তাহে মাঠের কাজ",
-    prompt: "এ সপ্তাহের আবহাওয়া কি ধানক্ষেতে কাজ করার জন্য ভালো?",
+    title: "বোরো ধানে কবে কোন সার",
+    prompt: "আমি ২ বিঘায় বোরো ধান লাগাব। কবে কোন সার কতটা দিতে হবে, একটা পরিকল্পনা করে দিন।",
   },
   {
-    icon: Bug,
+    icon: Sprout,
     tone: "yellow",
-    title: "বাদামি গাছফড়িং",
-    prompt: "আমার ধানক্ষেতে বাদামি গাছফড়িং দেখা দিয়েছে। কীভাবে দমন করব?",
+    title: "মাশরুম চাষ শুরু",
+    prompt: "আমি ঘরে ঝিনুক মাশরুম চাষ শুরু করতে চাই। ধাপে ধাপে কবে কী করতে হবে?",
   },
   {
     icon: CalendarCheck,
@@ -102,7 +109,7 @@ type ChatProps = {
 
 function Chat({ profile, onSignOut, mode, onToggleTheme }: ChatProps) {
   const { phone, name } = profile;
-  const headers = useMemo(() => ({ [PHONE_HEADER]: phone }), [phone]);
+  const headers = useMemo(() => ({ ...API_HEADERS, [PHONE_HEADER]: phone }), [phone]);
   const client = useMemo(() => new Client({ apiUrl: API_URL, defaultHeaders: headers }), [headers]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -112,6 +119,34 @@ function Chat({ profile, onSignOut, mode, onToggleTheme }: ChatProps) {
   const [openCaseId, setOpenCaseId] = useState<string | null>(null);
   const openCase = cases.find((c) => c.id === openCaseId) ?? null;
   const [paneWidth, setPaneWidth] = usePaneWidth();
+  // Desktop: the sidebar folds to an icon rail (remembered). Phones: it opens as a drawer.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) === "collapsed";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebar = () =>
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(SIDEBAR_KEY, c ? "open" : "collapsed");
+      } catch {
+        // Not remembered; still works.
+      }
+      return !c;
+    });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  /** From the rail: unfold it, unless the plan pane leaves no room (narrower screens), then as a drawer. */
+  const expandSidebar = () => {
+    if (!collapsed || (openCaseId && window.matchMedia("(max-width: 1280px)").matches)) setDrawerOpen(true);
+    else toggleSidebar();
+  };
+  /** Every pick in the sidebar also closes the drawer on phones. */
+  const openThread = (id: string | null) => {
+    setThreadId(id);
+    setDrawerOpen(false);
+  };
   const composerRef = useRef<ComposerHandle>(null);
 
   const context = useMemo(
@@ -147,6 +182,27 @@ function Chat({ profile, onSignOut, mode, onToggleTheme }: ChatProps) {
   }, [phone]);
   useEffect(refreshImages, [refreshImages]);
 
+  // Sessions booked with an officer, for the sidebar and the cards under replies.
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const refreshBookings = useCallback(() => {
+    listBookings(phone)
+      .then(setBookings)
+      .catch(() => {
+        // The list stays as it was; chat still works.
+      });
+  }, [phone]);
+  useEffect(refreshBookings, [refreshBookings]);
+
+  const onCancelBooking = useCallback(
+    async (b: Booking) => {
+      const updated = await cancelBooking(phone, b.id);
+      setBookings((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+      // A booking for a case is logged on the case too.
+      if (b.case_id) refreshCases();
+    },
+    [phone, refreshCases],
+  );
+
   const upsertCase = useCallback((c: CropCase) => {
     setCases((prev) => [c, ...prev.filter((x) => x.id !== c.id)]);
   }, []);
@@ -164,6 +220,7 @@ function Chat({ profile, onSignOut, mode, onToggleTheme }: ChatProps) {
       refreshThreads();
       refreshCases();
       refreshImages();
+      refreshBookings();
     },
   });
 
@@ -226,89 +283,117 @@ function Chat({ profile, onSignOut, mode, onToggleTheme }: ChatProps) {
   }, [stream.messages, waiting]);
 
   const showCases = () => setOpenCaseId(openCaseId ? null : (cases[0]?.id ?? null));
+  const shellClass = ["shell", openCase && "with-pane", collapsed && "sidebar-collapsed", drawerOpen && "drawer-open"].filter(Boolean).join(" ");
 
   return (
     <div
-      className={`shell${openCase ? " with-pane" : ""}`}
+      className={shellClass}
       style={openCase && paneWidth ? ({ "--pane-width": `${paneWidth}px` } as React.CSSProperties) : undefined}
     >
-      <aside className="sidebar">
-        <div className="brand">
+      {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden />}
+      <aside className="sidebar" id="sidebar">
+        <nav className="sidebar-rail" aria-label="সাইডবার">
+          <button type="button" className="icon-btn" onClick={expandSidebar} aria-label="সাইডবার খুলুন" title="সাইডবার খুলুন">
+            <PanelLeftOpen size={18} />
+          </button>
           <span className="brand-mark" aria-hidden>
             <Sprout size={18} />
           </span>
-          <div>
-            <div className="brand-name">KrishiBondhu.AI</div>
-            <div className="brand-sub">কৃষকের ডিজিটাল বন্ধু</div>
+          <button type="button" className="icon-btn" onClick={() => openThread(null)} aria-label="নতুন কথোপকথন" title="নতুন কথোপকথন">
+            <Plus size={18} />
+          </button>
+          {cases.length > 0 && (
+            <button type="button" className="icon-btn badge-btn" onClick={showCases} aria-label="পরিকল্পনা" title="পরিকল্পনা">
+              <ClipboardList size={18} />
+              <span className="badge">{bnDigits(cases.length)}</span>
+            </button>
+          )}
+          <span className="rail-spacer" />
+          <button type="button" className="icon-btn" onClick={onToggleTheme} aria-label="থিম পরিবর্তন" title="থিম পরিবর্তন">
+            {mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <button type="button" className="icon-btn" onClick={onSignOut} aria-label="প্রোফাইল পরিবর্তন" title="প্রোফাইল পরিবর্তন">
+            <LogOut size={16} />
+          </button>
+        </nav>
+        <div className="sidebar-full">
+          <div className="brand">
+            <span className="brand-mark" aria-hidden>
+              <Sprout size={18} />
+            </span>
+            <div className="brand-text">
+              <div className="brand-name">KrishiBondhu.AI</div>
+              <div className="brand-sub">কৃষকের ডিজিটাল বন্ধু</div>
+            </div>
+            <button type="button" className="icon-btn sidebar-collapse" onClick={toggleSidebar} aria-label="সাইডবার বন্ধ করুন" title="সাইডবার বন্ধ করুন">
+              <PanelLeftClose size={18} />
+            </button>
+            <button type="button" className="icon-btn drawer-close" onClick={() => setDrawerOpen(false)} aria-label="বন্ধ করুন">
+              <X size={18} />
+            </button>
           </div>
-        </div>
-        <button type="button" className="new-chat" onClick={() => setThreadId(null)}>
-          <Plus size={16} /> নতুন কথোপকথন
-        </button>
-        {cases.length > 0 && (
-          <nav className="case-list" aria-label="চিকিৎসার পরিকল্পনা">
-            <div className="sidebar-label">চিকিৎসার পরিকল্পনা</div>
-            {cases.map((c) => (
+          <button type="button" className="new-chat" onClick={() => openThread(null)}>
+            <Plus size={16} /> নতুন কথোপকথন
+          </button>
+          <PlanFolder
+            cases={cases}
+            openId={openCaseId}
+            onOpen={(id) => {
+              setOpenCaseId(id);
+              setDrawerOpen(false);
+            }}
+          />
+          <BookingList bookings={bookings} onCancel={onCancelBooking} onOpenCase={setOpenCaseId} />
+          <PhotoFolder images={images} onOpenThread={openThread} />
+          <div className="sidebar-label">কথোপকথন</div>
+          <nav className="thread-list" aria-label="কথোপকথন">
+            {threads.length === 0 && <p className="thread-empty">আপনার কথোপকথনগুলো এখানে দেখা যাবে।</p>}
+            {threads.map((t) => (
               <button
-                key={c.id}
+                key={t.thread_id}
                 type="button"
-                className="case-item"
-                aria-current={c.id === openCaseId}
-                data-stage={c.stage}
-                onClick={() => setOpenCaseId(c.id === openCaseId ? null : c.id)}
+                className="thread-item"
+                aria-current={t.thread_id === threadId}
+                onClick={() => openThread(t.thread_id)}
               >
-                <span className="case-item-title">{c.problem}</span>
-                <span className="case-item-meta">
-                  <span className="case-meter" aria-hidden>
-                    <span style={{ width: `${c.progress.total ? (100 * c.progress.done) / c.progress.total : 0}%` }} />
-                  </span>
-                  {c.stage === "in_treatment"
-                    ? `${bnDigits(c.progress.done)}/${bnDigits(c.progress.total)}`
-                    : STAGE_LABELS[c.stage]}
-                </span>
+                <MessageSquare size={14} />
+                <span>{threadTitle(t)}</span>
               </button>
             ))}
           </nav>
-        )}
-        <PhotoFolder images={images} onOpenThread={setThreadId} />
-        <div className="sidebar-label">কথোপকথন</div>
-        <nav className="thread-list" aria-label="কথোপকথন">
-          {threads.length === 0 && <p className="thread-empty">আপনার কথোপকথনগুলো এখানে দেখা যাবে।</p>}
-          {threads.map((t) => (
-            <button
-              key={t.thread_id}
-              type="button"
-              className="thread-item"
-              aria-current={t.thread_id === threadId}
-              onClick={() => setThreadId(t.thread_id)}
-            >
-              <MessageSquare size={14} />
-              <span>{threadTitle(t)}</span>
+          <div className="sidebar-foot">
+            <span className="phone-chip" title={placeLabel(profile)}>
+              <span className="profile-name">{name}</span>
+              {bnDigits(phone)}
+            </span>
+            <button type="button" className="icon-btn" onClick={onToggleTheme} aria-label="থিম পরিবর্তন">
+              {mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             </button>
-          ))}
-        </nav>
-        <div className="sidebar-foot">
-          <span className="phone-chip" title={placeLabel(profile)}>
-            <span className="profile-name">{name}</span>
-            {bnDigits(phone)}
-          </span>
-          <button type="button" className="icon-btn" onClick={onToggleTheme} aria-label="থিম পরিবর্তন">
-            {mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          <button type="button" className="icon-btn" onClick={onSignOut} aria-label="প্রোফাইল পরিবর্তন">
-            <LogOut size={16} />
-          </button>
+            <button type="button" className="icon-btn" onClick={onSignOut} aria-label="প্রোফাইল পরিবর্তন">
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
       </aside>
 
       <main className="main">
         <header className="mobile-header">
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="মেনু"
+            aria-controls="sidebar"
+            aria-expanded={drawerOpen}
+          >
+            <Menu size={18} />
+          </button>
           <span className="brand-mark" aria-hidden>
             <Sprout size={16} />
           </span>
           <span className="brand-name">KrishiBondhu.AI</span>
           {cases.length > 0 && (
-            <button type="button" className="icon-btn badge-btn" onClick={showCases} aria-label="চিকিৎসার পরিকল্পনা">
+            <button type="button" className="icon-btn badge-btn" onClick={showCases} aria-label="পরিকল্পনা">
               <ClipboardList size={18} />
               <span className="badge">{bnDigits(cases.length)}</span>
             </button>
@@ -344,6 +429,7 @@ function Chat({ profile, onSignOut, mode, onToggleTheme }: ChatProps) {
                       />
                     )}
                     <CaseCards steps={turn.steps} cases={cases} openId={openCaseId} onOpen={setOpenCaseId} />
+                    <BookingCards steps={turn.steps} bookings={bookings} onCancel={onCancelBooking} onOpenCase={setOpenCaseId} />
                   </div>
                 ),
               )
@@ -369,7 +455,7 @@ function Chat({ profile, onSignOut, mode, onToggleTheme }: ChatProps) {
               </button>
             </div>
           )}
-          <Composer ref={composerRef} onSend={send} onStop={() => void stream.stop()} isLoading={stream.isLoading} />
+          <Composer ref={composerRef} phone={phone} onSend={send} onStop={() => void stream.stop()} isLoading={stream.isLoading} />
           <p className="disclaimer">পরামর্শটি BRRI / DAE নির্দেশিকা থেকে AI দিয়ে তৈরি। রাসায়নিক ব্যবহারের আগে স্থানীয় কৃষি অফিসারের সাথে কথা বলুন।</p>
         </div>
       </main>
@@ -414,7 +500,7 @@ function CaseCards({
   const ids = [
     ...new Set(
       steps
-        .filter((s) => s.status === "done" && (s.name === "start_crop_case" || s.name === "update_crop_case"))
+        .filter((s) => s.status === "done" && (s.name === "start_crop_case" || s.name === "start_cultivation_plan" || s.name === "update_crop_case"))
         .map((s) => (isCase(s.artifact) ? s.artifact.id : String(s.args.case_id ?? "")))
         .filter(Boolean),
     ),
@@ -438,6 +524,27 @@ function CaseCards({
   });
 }
 
+/** The booking a turn made or changed, under the reply: as it is now if the list has it. */
+function BookingCards({
+  steps,
+  bookings,
+  onCancel,
+  onOpenCase,
+}: {
+  steps: Step[];
+  bookings: Booking[];
+  onCancel: (b: Booking) => Promise<void>;
+  onOpenCase: (id: string) => void;
+}) {
+  const latest = new Map<string, Booking>();
+  for (const s of steps) {
+    if (s.status === "done" && BOOKING_TOOLS.has(s.name) && isBooking(s.artifact)) latest.set(s.artifact.id, s.artifact);
+  }
+  return [...latest.values()].map((b) => (
+    <BookingCard key={b.id} booking={bookings.find((x) => x.id === b.id) ?? b} onCancel={onCancel} onOpenCase={onOpenCase} />
+  ));
+}
+
 function Welcome({ onPick }: { onPick: (prompt: string) => void }) {
   return (
     <section className="welcome">
@@ -445,7 +552,7 @@ function Welcome({ onPick }: { onPick: (prompt: string) => void }) {
         <Sprout size={26} />
       </span>
       <h1>আসসালামু আলাইকুম! আজ আপনার ফসলের জন্য কী করতে পারি?</h1>
-      <p>মাঠে যা দেখছেন তা লিখুন বা ছবি দিন। আমি সমস্যা চিনে চিকিৎসার পরিকল্পনা দিনে দিনে সাজিয়ে দেব, আর দরকার হলে কৃষি অফিসারের সাথে সময় ঠিক করে দেব।</p>
+      <p>মাঠে যা দেখছেন তা লিখুন বা ছবি দিন। আমি সমস্যা চিনে চিকিৎসা, বা নতুন কিছু চাষের পরিকল্পনা দিনে দিনে সাজিয়ে দেব, আর দরকার হলে কৃষি অফিসারের সাথে সময় ঠিক করে দেব।</p>
       <div className="starters">
         {STARTERS.map(({ icon, tone, title, prompt }) => (
           <button key={title} type="button" className="starter" onClick={() => onPick(prompt)}>

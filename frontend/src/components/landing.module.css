@@ -1,0 +1,481 @@
+/* The landing page: light, on its own tokens, apart from the chat app's theme. */
+
+.page {
+  --ink: #0f3d24;
+  --ink-soft: #6f8a78;
+  --paper: #f3f4ef;
+  --card: #ffffff;
+  --line: #e2e6dc;
+  --lime: #c8f04f;
+  --lime-ink: #10230f;
+  color-scheme: light;
+  min-height: 100%;
+  padding: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-inter), var(--font-bangla), system-ui, sans-serif;
+}
+
+/* Accent words: the same face, light against the semibold headline. */
+.page em {
+  font-style: normal;
+  font-weight: 300;
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: min(92vh, 860px);
+  border-radius: 24px;
+  overflow: hidden;
+  color: #fff;
+  isolation: isolate;
+}
+
+.heroImg {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  object-position: center 60%;
+}
+
+.heroShade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, rgb(6 28 14 / 0.6) 0%, rgb(6 28 14 / 0.2) 55%, transparent 100%),
+    linear-gradient(180deg, rgb(6 28 14 / 0.35) 0%, transparent 25%, transparent 50%, rgb(6 28 14 / 0.65) 100%);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px clamp(18px, 4vw, 44px);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.logoMark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--lime);
+  color: var(--lime-ink);
+}
+
+.navLinks {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgb(255 255 255 / 0.25);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.12);
+  backdrop-filter: blur(10px);
+  font-size: 13px;
+}
+
+.navLinks a {
+  padding: 6px 14px;
+  border-radius: 999px;
+  transition: background 0.15s;
+}
+
+.navLinks a:hover {
+  background: rgb(255 255 255 / 0.15);
+}
+
+.navLinks .navActive {
+  background: #fff;
+  color: var(--ink);
+}
+
+.navCta {
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.heroBody {
+  margin-top: auto;
+  padding: 0 clamp(18px, 4vw, 44px) 48px;
+  max-width: 640px;
+}
+
+.heroBody h1 {
+  font-size: clamp(36px, 5.6vw, 64px);
+  font-weight: 600;
+  line-height: 1.18;
+  letter-spacing: -0.01em;
+}
+
+.heroBody h1 em {
+  color: var(--lime);
+}
+
+.heroBody p {
+  margin-top: 18px;
+  max-width: 470px;
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: rgb(255 255 255 / 0.88);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.primary,
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: 999px;
+  font-size: 14.5px;
+  font-weight: 600;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.primary {
+  background: var(--lime);
+  color: var(--lime-ink);
+}
+
+.primary:hover {
+  transform: translateY(-1px);
+}
+
+.ghost {
+  border: 1px solid rgb(255 255 255 / 0.6);
+  color: #fff;
+}
+
+.ghost:hover {
+  background: rgb(255 255 255 / 0.12);
+}
+
+.heroBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px clamp(18px, 4vw, 44px);
+  border-top: 1px solid rgb(255 255 255 / 0.2);
+  font-size: 13px;
+}
+
+.scroll {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.02em;
+}
+
+.stats {
+  display: flex;
+  gap: 8px;
+}
+
+.stats span {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+  backdrop-filter: blur(10px);
+}
+
+.stats strong {
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* ---------- Sources strip ---------- */
+
+.sources {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 34px clamp(18px, 4vw, 44px);
+}
+
+.sources p {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.sources p strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.sources ul {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 14px 28px;
+  list-style: none;
+}
+
+.sources li {
+  font-size: 16px;
+  font-weight: 600;
+  color: #5b6b60;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Statement ---------- */
+
+.statement {
+  padding: 20px clamp(18px, 4vw, 44px) 72px;
+  max-width: 1040px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.chip::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #2f9b5b;
+}
+
+.statement p {
+  margin-top: 16px;
+  font-size: clamp(22px, 3vw, 34px);
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+
+.statement p span {
+  color: var(--ink-soft);
+}
+
+/* ---------- Features ---------- */
+
+.features {
+  padding: 64px clamp(18px, 4vw, 44px);
+  border-radius: 24px;
+  background: var(--card);
+}
+
+.featuresHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.featuresHead h2 {
+  margin-top: 14px;
+  font-size: clamp(28px, 3.6vw, 42px);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.featuresHead > p {
+  max-width: 380px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.featuresBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 28px;
+  margin-top: 40px;
+}
+
+.accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.accordion details {
+  border-radius: 14px;
+  background: var(--paper);
+  transition: background 0.2s;
+}
+
+.accordion summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+
+.accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+.featureIcon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--card);
+  color: #2f7a4b;
+}
+
+.toggle {
+  margin-left: auto;
+  color: var(--ink-soft);
+  transition: transform 0.2s;
+}
+
+.accordion details[open] .toggle {
+  transform: rotate(45deg);
+}
+
+.accordion details p {
+  margin: 0 16px 16px 58px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--card);
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: #4a5d50;
+}
+
+.photo {
+  position: relative;
+  min-height: 380px;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---------- Call to action and footer ---------- */
+
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 12px;
+  padding: 44px clamp(18px, 4vw, 44px);
+  border-radius: 24px;
+  background: var(--ink);
+  color: #fff;
+}
+
+.cta h2 {
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 600;
+}
+
+.cta h2 em {
+  color: var(--lime);
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 22px clamp(18px, 4vw, 44px) 10px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.footer a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---------- Small screens ---------- */
+
+@media (max-width: 760px) {
+  .navLinks {
+    display: none;
+  }
+
+  /* The palms and the field, not the sky and the power lines. */
+  .heroImg {
+    object-position: 22% 80%;
+  }
+
+  .heroShade {
+    background: linear-gradient(180deg, rgb(6 28 14 / 0.35) 0%, transparent 22%, rgb(6 28 14 / 0.45) 50%, rgb(6 28 14 / 0.75) 100%);
+  }
+
+  .heroBar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .stats {
+    flex-wrap: wrap;
+  }
+
+  .sources {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .sources ul {
+    justify-content: flex-start;
+  }
+
+  .featuresBody {
+    grid-template-columns: 1fr;
+  }
+
+  .photo {
+    min-height: 260px;
+  }
+}

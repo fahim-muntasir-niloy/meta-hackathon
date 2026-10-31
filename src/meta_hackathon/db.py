@@ -1,25 +1,82 @@
-"""The app's own records (crop cases, the photo folder) in one SQLite file
-under DATA_DIR, with the standard library for now (F8 replaces it).
+"""Postgres (DB_URI): the app's own records and the reference data.
 
-Calls block, so async code runs them with asyncio.to_thread: the Agent
-Server rejects blocking calls on its event loop."""
+Every pooled connection runs as `krishi_app`, a role row-level security
+applies to (the login role, avnadmin on Aiven, bypasses RLS). Policies on the
+farmers' tables compare each row's phone with the `app.phone` setting:
 
-import sqlite3
+- `farmer(phone)`: a transaction with `app.phone` set to the caller. A query
+  can only ever see or write that farmer's rows, even one that forgets
+  `WHERE phone = ...`. The setting is transaction-local, so a pooled
+  connection goes back clean.
+- `reference_rows(sql)`: lookups in the shared reference data (the `agri`
+  schema: pesticide register, Krishoker Janala advice; the officer roster).
+  `app.phone` is unset here, so no farmer's row is visible at all.
+
+The schema is in sql/schema.sql; `krishi-db migrate` applies it, as the login
+role (dbcli.py).
+
+Calls block, so async code runs them with asyncio.to_thread: the Agent Server
+rejects blocking calls on its event loop.
+"""
+
+import atexit
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from pathlib import Path
+from functools import cache
+
+from psycopg import Connection
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 from meta_hackathon.config import settings
 
+APP_ROLE = "krishi_app"
+
+
+def _as_app_role(conn: Connection) -> None:
+    conn.execute(f"SET ROLE {APP_ROLE}")
+
+
+@cache
+def pool() -> ConnectionPool:
+    # Small: Aiven's free plan allows few connections, and the checkpointer has its own pool.
+    app_pool = ConnectionPool(
+        settings.DB_URI,
+        min_size=1,
+        max_size=4,
+        kwargs={"autocommit": True, "row_factory": dict_row},
+        configure=_as_app_role,
+        open=True,
+        name="app",
+    )
+    atexit.register(app_pool.close)
+    return app_pool
+
+
+_known_farmers: set[str] = set()
+_known_lock = threading.Lock()
+
 
 @contextmanager
-def connect(schema: str) -> Iterator[sqlite3.Connection]:
-    """A connection in autocommit mode, with the caller's tables created if missing."""
-    path = Path(settings.DATA_DIR) / "krishi.sqlite3"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, timeout=10, isolation_level=None)
-    try:
-        conn.executescript(schema)
+def farmer(phone: str) -> Iterator[Connection]:
+    """One transaction as `phone`. Commits on exit, rolls back on an exception."""
+    if not phone:
+        raise ValueError("No farmer identity")
+    with _known_lock:
+        known = phone in _known_farmers
+    with pool().connection() as conn, conn.transaction():
+        conn.execute("SELECT set_config('app.phone', %s, true)", (phone,))
+        if not known:
+            # Every row a farmer owns references farmers(phone).
+            conn.execute("INSERT INTO farmers (phone) VALUES (%s) ON CONFLICT DO NOTHING", (phone,))
         yield conn
-    finally:
-        conn.close()
+    # Only once that transaction committed.
+    with _known_lock:
+        _known_farmers.add(phone)
+
+
+def reference_rows(sql: str, params=()) -> list[dict]:
+    """Rows from the shared reference data."""
+    with pool().connection() as conn:
+        return conn.execute(sql, params).fetchall()

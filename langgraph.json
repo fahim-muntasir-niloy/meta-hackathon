@@ -1,6 +1,8 @@
 {
   "$schema": "https://langgra.ph/schema.json",
-  "dependencies": ["."],
+  "dependencies": [
+    "."
+  ],
   "graphs": {
     "krishi_advisor": "./src/meta_hackathon/agent/graph.py:graph"
   },
@@ -8,13 +10,27 @@
   "auth": {
     "path": "./src/meta_hackathon/auth.py:auth"
   },
+  "checkpointer": {
+    "path": "./src/meta_hackathon/persistence.py:checkpointer"
+  },
+  "store": {
+    "path": "./src/meta_hackathon/persistence.py:store"
+  },
   "http": {
     "app": "./src/meta_hackathon/main.py:app",
     "cors": {
-      "allow_origins": ["http://localhost:3000"],
-      "allow_methods": ["*"],
-      "allow_headers": ["*"],
-      "expose_headers": ["*"]
+      "allow_origins": [
+        "http://localhost:3000"
+      ],
+      "allow_methods": [
+        "*"
+      ],
+      "allow_headers": [
+        "*"
+      ],
+      "expose_headers": [
+        "*"
+      ]
     }
   }
 }

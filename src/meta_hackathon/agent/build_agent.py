@@ -1,5 +1,6 @@
 from langchain.agents import create_agent
 from langchain.agents.middleware import ToolCallLimitMiddleware
+from langgraph.store.base import BaseStore
 from langgraph.types import Checkpointer
 
 from meta_hackathon.agent.context import UserContext
@@ -10,9 +11,12 @@ from meta_hackathon.prompts.system import ReplyFormat
 from meta_hackathon.tools import ALL_TOOLS
 
 
-def build_agent(*, reply_format: ReplyFormat = "text", checkpointer: Checkpointer = None):
+def build_agent(*, reply_format: ReplyFormat = "text", checkpointer: Checkpointer = None, store: BaseStore | None = None):
     """`text` for plain chat channels (WhatsApp, /v1/chat); `openui` for the web UI,
-    where replies are openui-lang rendered by the OpenUI Renderer."""
+    where replies are openui-lang rendered by the OpenUI Renderer.
+
+    Under the Agent Server, the server passes in its checkpointer and store
+    (Postgres, persistence.py); /v1/chat (main.py) passes its own."""
     return create_agent(
         model=llm,
         tools=ALL_TOOLS,
@@ -24,5 +28,6 @@ def build_agent(*, reply_format: ReplyFormat = "text", checkpointer: Checkpointe
         ],
         context_schema=UserContext,
         checkpointer=checkpointer,
+        store=store,
         name="krishi_advisor",
     )

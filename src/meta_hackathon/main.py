@@ -1,36 +1,57 @@
 from contextlib import asynccontextmanager
 
+import logging
 import re
 from pathlib import Path
 
 import openai
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
-from langgraph.checkpoint.memory import InMemorySaver
 
 from meta_hackathon.config import settings, setup_langsmith
 
 # Must run before any LangChain object is created so tracing picks up the env.
 setup_langsmith()
 
+# The Agent Server logs every outbound HTTP call, auth check, LangSmith
+# metadata upload and once-a-minute worker/queue stats at INFO; keep only
+# warnings from those and leave run lifecycle logs (Created run, ...) visible.
+for name in (
+    "httpx",
+    "httpx2",
+    "langgraph_api.auth.custom",
+    "langgraph_api.metadata",
+    "langgraph_api.metrics_collector",
+    "langgraph_runtime_inmem.queue",
+):
+    logging.getLogger(name).setLevel(logging.WARNING)
+
 from meta_hackathon.agent.build_agent import build_agent  # noqa: E402
+from meta_hackathon.api.bookings import router as bookings_router  # noqa: E402
 from meta_hackathon.api.cases import router as cases_router  # noqa: E402
 from meta_hackathon.api.chat import router as chat_router  # noqa: E402
 from meta_hackathon.api.images import router as images_router  # noqa: E402
 from meta_hackathon.api.pesticides import router as pesticides_router  # noqa: E402
+from meta_hackathon.api.voice import router as voice_router  # noqa: E402
+from meta_hackathon.persistence import checkpointer, store  # noqa: E402
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.agent = build_agent(checkpointer=InMemorySaver())
-    yield
+    # The plain-text channels' agent (/v1/chat), with its own small pools; the web UI's
+    # runs go through the Agent Server, which has the ones from langgraph.json.
+    async with checkpointer(max_size=2) as saver, store(max_size=1) as memory:
+        app.state.agent = build_agent(checkpointer=saver, store=memory)
+        yield
 
 
 app = FastAPI(title="KrishiBondhu.AI", version="0.1.0", lifespan=lifespan)
 app.include_router(chat_router)
 app.include_router(cases_router)
+app.include_router(bookings_router)
 app.include_router(images_router)
 app.include_router(pesticides_router)
+app.include_router(voice_router)
 
 
 @app.exception_handler(openai.BadRequestError)

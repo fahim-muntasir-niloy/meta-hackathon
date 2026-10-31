@@ -35,7 +35,7 @@ export const PesticideCard = defineComponent({
     tag: z.string().optional(),
   }),
   description:
-    'One registered active ingredient from find_registered_pesticides. ingredient and dose exactly as returned (dose of the first example brand, e.g. "125 ml/ha"); category in Bangla (কীটনাশক / ছত্রাকনাশক / আগাছানাশক); hazard = human_hazard.who_class ("unknown" when null); doseLocal = the dose per bigha or per 10 L tank in Bangla, e.g. "বিঘা প্রতি ~১৭ মিলি"; mixing = how to mix and spray, one short Bangla sentence; brands = 1-3 "Brand · AP-123"; hazardNote = human_hazard.note when present; tag e.g. "সবচেয়ে বেশি পাওয়া যায়".',
+    'One registered active ingredient from find_registered_pesticides, or from get_crop_problem (only one with registered_for_this_crop true, or from registered_for_this_problem). ingredient and dose exactly as returned (the register label dose for this crop, e.g. "125 ml/ha"; label_dose in get_crop_problem); category in Bangla (কীটনাশক / ছত্রাকনাশক / আগাছানাশক); hazard = human_hazard.who_class ("unknown" when null); doseLocal = the dose per bigha or per 10 L tank in Bangla, e.g. "বিঘা প্রতি ~১৭ মিলি"; mixing = how to mix and spray, one short Bangla sentence; brands = 1-3 "Brand · AP-123"; hazardNote = human_hazard.note when present; tag e.g. "সবচেয়ে বেশি পাওয়া যায়".',
   component: ({ props }) => {
     const level = LEVELS[props.hazard] ?? LEVELS.unknown;
     const Icon = level.icon;

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Hind_Siliguri, Inter } from "next/font/google";
+import { Anek_Bangla, Inter } from "next/font/google";
 import "@openuidev/react-ui/styles/index.css";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const bangla = Hind_Siliguri({ subsets: ["bengali", "latin"], weight: ["400", "500", "600"], variable: "--font-bangla" });
+// Anek Bangla is a variable font: every weight from 100 to 800 in one file.
+const bangla = Anek_Bangla({ subsets: ["bengali", "latin"], variable: "--font-bangla" });
 
 export const metadata: Metadata = {
   title: "KrishiBondhu.AI — কৃষকের ডিজিটাল বন্ধু",

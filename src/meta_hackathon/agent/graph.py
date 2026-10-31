@@ -1,6 +1,7 @@
 """Entry point for the LangGraph Agent Server (see langgraph.json).
 
-The server owns persistence, so no checkpointer is passed here."""
+The server owns persistence (the Postgres checkpointer and store from
+persistence.py, named in langgraph.json), so neither is passed here."""
 
 from meta_hackathon.config import setup_langsmith
 

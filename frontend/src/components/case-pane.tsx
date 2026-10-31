@@ -1,7 +1,9 @@
 "use client";
 
-// The treatment-plan pane: a timeline from the start of the treatment to the
-// last check, with every step on the day it is due (src/meta_hackathon/cases.py).
+// The plan pane: a timeline of every step on the day it is due
+// (src/meta_hackathon/cases.py). A treatment plan runs from today to the last
+// check; a cultivation plan from land preparation to harvest, its steps counted
+// from day 0 (transplanting, sowing, spawning) and grouped into phases.
 // KrishiBondhu plans the dates; the farmer can tick actions off, move or skip a
 // step, report how the plants look at a check (KrishiBondhu then records it and
 // adjusts the plan), send a photo, or ask about any step.
@@ -14,6 +16,7 @@ import {
   CircleMinus,
   Eye,
   MessageCircle,
+  BookOpen,
   ShieldAlert,
   SprayCan,
   SquareCheck,
@@ -35,6 +38,24 @@ export const STAGE_LABELS: Record<Stage, string> = {
   resolved: "সেরে গেছে",
   abandoned: "বন্ধ",
 };
+
+const CULTIVATION_STAGE_LABELS: Record<Stage, string> = {
+  in_treatment: "চলছে",
+  escalated: "সমস্যা দেখা দিয়েছে",
+  resolved: "শেষ হয়েছে",
+  abandoned: "বন্ধ",
+};
+
+export const stageLabel = (c: CropCase) =>
+  (c.plan_type === "cultivation" ? CULTIVATION_STAGE_LABELS : STAGE_LABELS)[c.stage];
+
+/** "চারা রোপণের ১৫ দিন পর", "চারা রোপণের ২৫ দিন আগে", "চারা রোপণের দিন". */
+function anchorDay(label: string, day: number) {
+  // Bangla possessive: "রাখা" → "রাখার", "রোপণ" → "রোপণের".
+  const of = label ? `${label}${/[\u09BE-\u09CC]$/.test(label) ? "র" : "ের"}` : "শুরুর";
+  if (day === 0) return `${of} দিন`;
+  return `${of} ${bnDigits(Math.abs(day))} দিন ${day > 0 ? "পর" : "আগে"}`;
+}
 
 const STATUS_LABELS: Record<StepStatus, string> = {
   todo: "বাকি",
@@ -132,7 +153,7 @@ export type CasePaneProps = {
   /** Pick a photo for a check step and send it to KrishiBondhu. */
   onPhoto: (crop: CropCase, step: PlanStep) => void;
   onUpdateStep: (crop: CropCase, step: PlanStep, patch: { status?: StepStatus; due?: string }) => Promise<void>;
-  onUpdateCase: (crop: CropCase, patch: { stage?: Stage; end_date?: string }) => Promise<void>;
+  onUpdateCase: (crop: CropCase, patch: { stage?: Stage; end_date?: string; start_date?: string }) => Promise<void>;
   onDelete: (crop: CropCase) => Promise<void>;
 };
 
@@ -161,6 +182,10 @@ function Timeline({
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [editingEnd, setEditingEnd] = useState(false);
+  const [editingStart, setEditingStart] = useState(false);
+  const cultivation = crop.plan_type === "cultivation";
+  const anchor = parseDay(crop.start_date);
+  const endWord = cultivation ? "শেষ ধাপ" : "শেষ চেকআপ";
   const [zoomed, setZoomed] = useState<string | null>(null);
   const entryRefs = useRef(new Map<string, HTMLLIElement>());
 
@@ -210,10 +235,12 @@ function Timeline({
   const about = { case_id: crop.id };
 
   return (
-    <aside className="pane case-pane" aria-label="চিকিৎসার পরিকল্পনা">
+    <aside className="pane case-pane" aria-label={cultivation ? "চাষের পরিকল্পনা" : "চিকিৎসার পরিকল্পনা"}>
       <header className="pane-head">
         <div className="pane-title">
-          <span className="eyebrow">চিকিৎসার পরিকল্পনা · {crop.crop}</span>
+          <span className="eyebrow">
+            {cultivation ? "চাষের পরিকল্পনা" : "চিকিৎসার পরিকল্পনা"} · {crop.crop}
+          </span>
           {cases.length > 1 ? (
             <select value={crop.id} onChange={(e) => onSelect(e.target.value)} aria-label="পরিকল্পনা বাছুন">
               {cases.map((c) => (
@@ -230,8 +257,38 @@ function Timeline({
             </strong>
           )}
           <div className="pane-pills">
-            <span className={`stage stage-${crop.stage}`}>{STAGE_LABELS[crop.stage]}</span>
-            <span className={`stage confidence-${crop.confidence}`}>নিশ্চয়তা: {CONFIDENCE_LABELS[crop.confidence]}</span>
+            <span className={`stage stage-${crop.stage}`}>{stageLabel(crop)}</span>
+            {!cultivation && (
+              <span className={`stage confidence-${crop.confidence}`}>নিশ্চয়তা: {CONFIDENCE_LABELS[crop.confidence]}</span>
+            )}
+            {anchor &&
+              (editingStart ? (
+                <input
+                  type="date"
+                  className="stage anchor-input"
+                  defaultValue={crop.start_date ?? ""}
+                  autoFocus
+                  aria-label={`${crop.anchor_label || "শুরুর"} তারিখ`}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (!value) return;
+                    void run("start", async () => {
+                      await onUpdateCase(crop, { start_date: value });
+                      setEditingStart(false);
+                    });
+                  }}
+                  onBlur={() => setEditingStart(false)}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="stage anchor"
+                  onClick={() => setEditingStart(true)}
+                  title="তারিখ বদলালে সব ধাপ সেই হিসাবে সরে যাবে"
+                >
+                  <CalendarDays size={11} /> {crop.anchor_label || "শুরু"}: {longLabel.format(anchor)}
+                </button>
+              ))}
           </div>
         </div>
         <button type="button" className="icon-btn" onClick={onClose} aria-label="প্যানেল বন্ধ করুন">
@@ -241,13 +298,14 @@ function Timeline({
 
       <div className="pane-body">
         {crop.diagnosis && <p className="cp-diagnosis">{crop.diagnosis}</p>}
+        {anchor && <p className="cp-anchor-day">আজ {anchorDay(crop.anchor_label, daysFrom(anchor, now))}</p>}
 
         <section className="cp-hero">
           <ProgressRing percent={percent} />
           <div className="countdown">
             {editingEnd ? (
               <label className="end-edit">
-                <span>শেষ চেকআপের তারিখ</span>
+                <span>{endWord}-এর তারিখ</span>
                 <input
                   type="date"
                   defaultValue={crop.end_date ?? ""}
@@ -265,7 +323,7 @@ function Timeline({
                 />
               </label>
             ) : (
-              <button type="button" className="countdown-btn" onClick={() => setEditingEnd(true)} title="শেষ চেকআপের তারিখ বদলান">
+              <button type="button" className="countdown-btn" onClick={() => setEditingEnd(true)} title={`${endWord}-এর তারিখ বদলান`}>
                 {planDays && dayOf >= 1 && dayOf <= planDays ? (
                   <span className="big">
                     {bnDigits(dayOf)}
@@ -279,11 +337,11 @@ function Timeline({
                 <span className="sub">
                   {end
                     ? daysLeft! > 0
-                      ? `শেষ চেকআপ ${bnDigits(daysLeft!)} দিন পর · ${longLabel.format(end)}`
+                      ? `${endWord} ${bnDigits(daysLeft!)} দিন পর · ${longLabel.format(end)}`
                       : daysLeft === 0
-                        ? "আজ শেষ চেকআপ"
-                        : `শেষ চেকআপ ছিল ${longLabel.format(end)}`
-                    : "শেষ চেকআপের তারিখ দিন"}
+                        ? `আজ ${endWord}`
+                        : `${endWord} ছিল ${longLabel.format(end)}`
+                    : `${endWord}-এর তারিখ দিন`}
                 </span>
               </button>
             )}
@@ -294,7 +352,7 @@ function Timeline({
           </div>
         </section>
 
-        <Track steps={crop.steps} start={start} end={end} now={now} onPick={reveal} />
+        <Track steps={crop.steps} start={start} end={end} endWord={endWord} now={now} onPick={reveal} />
 
         {crop.next_step && !closed && (
           <div className="next-step">
@@ -365,12 +423,18 @@ function Timeline({
                   <span className="tl-rail">
                     <span className="tl-node" />
                   </span>
-                  <span className="tl-marker-label">{entry.kind === "today" ? "আজ" : "শেষ চেকআপ"}</span>
+                  <span className="tl-marker-label">{entry.kind === "today" ? "আজ" : endWord}</span>
                 </li>
               );
             }
             const { step, date } = entry;
             const firstUndated = !date && (idx === 0 || entries[idx - 1].kind !== "step" || !!entries[idx - 1].date);
+            // A phase header where the phase changes from the step before (markers do not count).
+            const prevStep = entries
+              .slice(0, idx)
+              .reverse()
+              .find((e): e is Extract<Entry, { kind: "step" }> => e.kind === "step");
+            const phaseStart = !!step.phase && step.phase !== prevStep?.step.phase;
             const urgency = urgencyOf(step, now);
             const open = expanded === step.id;
             const check = step.kind === "check";
@@ -384,6 +448,7 @@ function Timeline({
                 className={`tl-entry ${urgency} status-${step.status}${step.outcome ? ` outcome-${step.outcome}` : ""}${open ? " open" : ""}`}
               >
                 {firstUndated && <div className="tl-section">তারিখ ঠিক হয়নি</div>}
+                {phaseStart && !firstUndated && <div className="tl-section tl-phase">{step.phase}</div>}
                 <div className="tl-row">
                   <span className="tl-date">
                     {date ? (
@@ -413,6 +478,9 @@ function Timeline({
                     {step.note && !open && <p className="item-note">{step.note}</p>}
                     {open && (
                       <div className="tl-body">
+                        {step.day !== null && cultivation && (
+                          <p className="item-day">{anchorDay(crop.anchor_label, step.day)}</p>
+                        )}
                         {step.details && <p className="item-details">{step.details}</p>}
                         {step.safety_note && (
                           <p className="item-safety">
@@ -420,9 +488,14 @@ function Timeline({
                           </p>
                         )}
                         {step.note && <p className="item-note">{step.note}</p>}
+                        {step.source && (
+                          <p className="item-source">
+                            <BookOpen size={12} /> উৎস: {step.source}
+                          </p>
+                        )}
                         {check && step.status !== "skipped" && !closed && (
-                          <div className="outcomes" role="group" aria-label="গাছ এখন কেমন?">
-                            <span className="outcomes-label">গাছ এখন কেমন?</span>
+                          <div className="outcomes" role="group" aria-label={cultivation ? "ফসল এখন কেমন?" : "গাছ এখন কেমন?"}>
+                            <span className="outcomes-label">{cultivation ? "ফসল এখন কেমন?" : "গাছ এখন কেমন?"}</span>
                             {(
                               [
                                 ["better", TrendingUp],
@@ -436,7 +509,7 @@ function Timeline({
                                 className={`btn outcome ${outcome}${step.outcome === outcome ? " on" : ""}`}
                                 disabled={busy}
                                 onClick={() =>
-                                  onAsk(`"${step.title}": গাছ ${OUTCOME_LABELS[outcome]}।`, {
+                                  onAsk(`"${step.title}": ${cultivation ? "ফসল" : "গাছ"} ${OUTCOME_LABELS[outcome]}।`, {
                                     ...about,
                                     step_id: step.id,
                                     outcome,
@@ -543,7 +616,7 @@ function Timeline({
               onClick={() => run("stage", () => onUpdateCase(crop, { stage: "resolved" }))}
             >
               <SquareCheck size={13} />
-              সমস্যা মিটে গেছে
+              {cultivation ? "চাষ শেষ হয়েছে" : "সমস্যা মিটে গেছে"}
             </button>
           )}
           <button
@@ -596,12 +669,14 @@ function Track({
   steps,
   start,
   end,
+  endWord,
   now,
   onPick,
 }: {
   steps: PlanStep[];
   start: Date;
   end: Date | null;
+  endWord: string;
   now: Date;
   onPick: (id: string) => void;
 }) {
@@ -631,7 +706,7 @@ function Track({
         <span className="track-today" style={{ left: `${at(now)}%` }}>
           <span>আজ</span>
         </span>
-        {end && <span className="track-end" style={{ left: `${at(end)}%` }} title={`শেষ চেকআপ · ${longLabel.format(end)}`} />}
+        {end && <span className="track-end" style={{ left: `${at(end)}%` }} title={`${endWord} · ${longLabel.format(end)}`} />}
       </div>
     </div>
   );

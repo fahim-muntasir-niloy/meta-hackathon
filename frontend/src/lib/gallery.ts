@@ -1,5 +1,5 @@
 /** The farmer's annotated photos from segment_image, newest first (src/meta_hackathon/gallery.py). */
-import { API_URL, PHONE_HEADER } from "./config";
+import { API_HEADERS, API_URL, PHONE_HEADER } from "./config";
 
 export type GalleryImage = {
   url: string;
@@ -11,7 +11,7 @@ export type GalleryImage = {
 };
 
 export async function listImages(phone: string): Promise<GalleryImage[]> {
-  const res = await fetch(`${API_URL}/v1/images`, { headers: { [PHONE_HEADER]: phone } });
+  const res = await fetch(`${API_URL}/v1/images`, { headers: { ...API_HEADERS, [PHONE_HEADER]: phone } });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return (await res.json()).images;
 }

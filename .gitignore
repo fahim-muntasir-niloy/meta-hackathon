@@ -15,5 +15,8 @@ wheels/
 .langgraph_api/
 # Annotated images from segment_image
 .media/
-# Crop cases database
+# Old SQLite crop cases database (now in Postgres; `krishi-db import-sqlite` reads it)
 .data/
+# SQLite side files of agri.db
+*.db-shm
+*.db-wal

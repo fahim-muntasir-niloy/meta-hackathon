@@ -23,6 +23,8 @@ class StepPatch(BaseModel):
 class CasePatch(BaseModel):
     stage: Stage | None = None
     end_date: str | None = None
+    # Cultivation plans: day 0 moved; the steps counted from it move too.
+    start_date: str | None = None
 
 
 def _changed(phone: str, case_id: str, **changes) -> dict:
@@ -41,7 +43,7 @@ def cases(phone: PhoneNumber) -> dict[Literal["cases"], list[dict]]:
 
 @router.patch("/{case_id}")
 def update_case(case_id: str, body: CasePatch, phone: PhoneNumber) -> dict:
-    return _changed(phone, case_id, stage=body.stage, end_date=body.end_date)
+    return _changed(phone, case_id, stage=body.stage, end_date=body.end_date, start_date=body.start_date)
 
 
 @router.patch("/{case_id}/steps/{step_id}")

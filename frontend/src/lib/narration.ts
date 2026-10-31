@@ -3,8 +3,8 @@
  * "বগুড়ার ৩ দিনের আবহাওয়ার পূর্বাভাস দেখছি" → "বগুড়ার আবহাওয়া দেখা হয়েছে".
  */
 import type { LucideIcon } from "lucide-react";
-import { BookOpenCheck, CalendarCheck, ClipboardList, CloudSun, FlaskConical, Globe, Images, MapPin, ScanSearch, Wrench } from "lucide-react";
-import { bnDateTime, bnDigits, term } from "./bn";
+import { BookOpenCheck, Brain, CalendarCheck, ClipboardList, CloudSun, FlaskConical, Globe, Images, MapPin, ScanSearch, Wrench } from "lucide-react";
+import { bnDigits, term } from "./bn";
 
 export type StepStatus = "running" | "done" | "error" | "stopped";
 
@@ -22,14 +22,27 @@ const quote = (v: unknown) => `“${str(v, "…")}”`;
 const asArray = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v : []);
 
 const narrators: Record<string, Narrator> = {
-  search_knowledgebase: (args, status, result) => {
-    const hits = asArray(result).filter((h) => h.id);
-    if (status !== "done")
-      return { icon: BookOpenCheck, title: `যাচাই করা BRRI / DAE নির্দেশিকায় ${quote(args.query)} খুঁজছি` };
+  search_crop_problems: (args, status, result) => {
+    const crop = str(args.crop);
+    if (status !== "done") return { icon: BookOpenCheck, title: `কৃষকের জানালায় ${crop ? `${crop}-এর ` : ""}সমস্যা খুঁজছি` };
+    const hits = asArray((result as Args | undefined)?.results);
     return {
       icon: BookOpenCheck,
-      title: hits.length ? `${bnDigits(hits.length)}টি নির্দেশিকা পাওয়া গেছে` : "মিলে যায় এমন নির্দেশিকা পাওয়া যায়নি",
-      detail: hits.map((h) => str(h.title)).join(" · ") || undefined,
+      title: hits.length ? `কৃষকের জানালায় ${bnDigits(hits.length)}টি মিল পাওয়া গেছে` : "কৃষকের জানালায় মিলে যায় এমন সমস্যা পাওয়া যায়নি",
+      detail: hits.slice(0, 3).map((h) => str(h.problem)).join(" · ") || undefined,
+    };
+  },
+
+  get_crop_problem: (_args, status, result) => {
+    if (status !== "done") return { icon: BookOpenCheck, title: "কৃষকের জানালার পরামর্শ পড়ছি" };
+    const r = (result ?? {}) as Args;
+    const unregistered = Number(r.unregistered_in_advice ?? 0);
+    return {
+      icon: BookOpenCheck,
+      title: `${str(r.problem, "সমস্যাটির")} সম্পর্কে পরামর্শ পড়া হয়েছে`,
+      detail: unregistered
+        ? `পরামর্শের ${bnDigits(unregistered)}টি ওষুধ এই ফসলের জন্য নিবন্ধিত নয়, সেগুলো বাদ`
+        : "ওষুধগুলো DAE-র নিবন্ধিত তালিকার সাথে মেলানো হয়েছে",
     };
   },
 
@@ -60,20 +73,41 @@ const narrators: Record<string, Narrator> = {
     };
   },
 
-  schedule_officer_session: (args, status, result) => {
+  find_officer_slots: (args, status, result) => {
     const kind = term(str(args.session_type, "session"));
-    const place = str(args.location, "আপনার এলাকা");
-    if (status !== "done") return { icon: CalendarCheck, title: `${place}-এর কৃষি কর্মকর্তার সাথে ${kind} বুক করছি` };
-    const r = (result ?? {}) as Args;
-    const officer = str((r.officer as Args | undefined)?.name, "কৃষি কর্মকর্তা");
+    if (status !== "done") return { icon: CalendarCheck, title: `আপনার এলাকার কৃষি কর্মকর্তার ${kind}-এর খালি সময় দেখছি` };
+    const officers = typeof result === "string" ? [...result.matchAll(/officer_id: \S+ -- ([^,]+)/g)].map((m) => m[1]) : [];
     return {
       icon: CalendarCheck,
-      title: `${officer}-এর সাথে ${kind} বুক হয়েছে`,
-      detail: [str(r.slot) && bnDateTime(str(r.slot)), str(r.booking_id) && `বুকিং আইডি: ${r.booking_id}`]
-        .filter(Boolean)
-        .join(" · ") || undefined,
+      title: officers.length ? "কৃষি কর্মকর্তার খালি সময় পাওয়া গেছে" : "এলাকার কৃষি কর্মকর্তা খুঁজে পাওয়া যায়নি",
+      detail: officers.join(" · ") || undefined,
     };
   },
+
+  book_officer_session: (args, status, result) => {
+    const kind = term(str(args.session_type, "session"));
+    if (status !== "done") return { icon: CalendarCheck, title: `কৃষি কর্মকর্তার সাথে ${kind} বুক করছি` };
+    const id = typeof result === "string" ? result.match(/booking_id: (\S+)/)?.[1] : undefined;
+    return { icon: CalendarCheck, title: `কৃষি কর্মকর্তার সাথে ${kind} বুক হয়েছে`, detail: id ? `বুকিং নং ${id}` : undefined };
+  },
+
+  change_officer_booking: (args, status) => {
+    const cancel = args.action === "cancel";
+    if (status !== "done") return { icon: CalendarCheck, title: cancel ? "সাক্ষাৎ বাতিল করছি" : "সাক্ষাতের সময় বদলাচ্ছি" };
+    return { icon: CalendarCheck, title: cancel ? "সাক্ষাৎ বাতিল হয়েছে" : "সাক্ষাতের সময় বদলানো হয়েছে" };
+  },
+
+  create_or_update_user_memory: (args, status) => {
+    if (args.forget) return { icon: Brain, title: status === "done" ? "একটি তথ্য ভুলে যাওয়া হয়েছে" : "তথ্যটি মুছে ফেলছি" };
+    return status !== "done"
+      ? { icon: Brain, title: "আপনার সম্পর্কে মনে রাখছি" }
+      : { icon: Brain, title: "মনে রাখা হয়েছে", detail: str(args.content) || undefined };
+  },
+
+  fetch_user_memory: (_args, status) =>
+    status !== "done"
+      ? { icon: Brain, title: "আগের কথাবার্তা থেকে আপনার তথ্য দেখছি" }
+      : { icon: Brain, title: "আপনার আগের তথ্য দেখা হয়েছে" },
 
   segment_image: (args, status, result) => {
     const labels = asArray(args.targets).map((t) => str(t.label)).filter(Boolean);
@@ -135,15 +169,25 @@ const narrators: Record<string, Narrator> = {
     };
   },
 
+  start_cultivation_plan: (args, status) => {
+    const title = str(args.title, "চাষের");
+    if (status !== "done") return { icon: ClipboardList, title: `${title}: পরিকল্পনা সাজাচ্ছি` };
+    return {
+      icon: ClipboardList,
+      title: `${title}: পরিকল্পনা তৈরি হয়েছে`,
+      detail: `${bnDigits(asArray(args.steps).length)}টি ধাপ, পাশের প্যানেলে দেখুন`,
+    };
+  },
+
   update_crop_case: (_args, status) =>
     status !== "done"
-      ? { icon: ClipboardList, title: "চিকিৎসার পরিকল্পনায় লিখে রাখছি" }
-      : { icon: ClipboardList, title: "চিকিৎসার পরিকল্পনা আপডেট হয়েছে" },
+      ? { icon: ClipboardList, title: "পরিকল্পনায় লিখে রাখছি" }
+      : { icon: ClipboardList, title: "পরিকল্পনা আপডেট হয়েছে" },
 
   get_crop_case: (_args, status) =>
     status !== "done"
-      ? { icon: ClipboardList, title: "আপনার চিকিৎসার পরিকল্পনা দেখছি" }
-      : { icon: ClipboardList, title: "চিকিৎসার পরিকল্পনা দেখা হয়েছে" },
+      ? { icon: ClipboardList, title: "আপনার পরিকল্পনা দেখছি" }
+      : { icon: ClipboardList, title: "পরিকল্পনা দেখা হয়েছে" },
 
   geocode_location: (args, status, result) => {
     const place = str(args.place, "জায়গাটি");

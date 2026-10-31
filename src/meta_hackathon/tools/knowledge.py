@@ -1,78 +1,70 @@
-from langchain.tools import tool
+"""Krishoker Janala advice (knowledge.py): find the crop problem that fits,
+then read its full advice with the register check on every chemical it names.
 
-# SIMULATED: a few hand-written chunks standing in for the DAE/BRRI vector store (K1-K4).
-# Reference images are real, openly licensed Wikimedia Commons photos.
-_CHUNKS = [
-    {
-        "id": "brri-blast-01",
-        "image_url": "https://upload.wikimedia.org/wikipedia/commons/c/c1/Rice_blast_Magnaporthe_grisea.jpg",
-        "image_credit": "Wikimedia Commons, public domain",
-        "crop": "rice",
-        "title": "Rice blast (ধানের ব্লাস্ট রোগ)",
-        "source": "BRRI Rice Disease Leaflet (simulated)",
-        "keywords": ["blast", "ব্লাস্ট", "spot", "দাগ", "leaf", "পাতা", "eye-shaped"],
-        "text": (
-            "Spindle/eye-shaped lesions with grey centre and brown margin on leaves. "
-            "Favoured by high humidity and excess nitrogen. Keep field water, avoid "
-            "extra urea. If >5% leaf area affected, spray Tricyclazole 75 WP at "
-            "0.6 g per litre water, twice at 7-10 day interval."
-        ),
-    },
-    {
-        "id": "brri-blb-01",
-        "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Bacterial_blight_of_rice.jpeg/960px-Bacterial_blight_of_rice.jpeg",
-        "image_credit": "Wikimedia Commons, CC BY 3.0 US",
-        "crop": "rice",
-        "title": "Bacterial leaf blight (ব্যাকটেরিয়াজনিত পাতাপোড়া)",
-        "source": "BRRI Rice Disease Leaflet (simulated)",
-        "keywords": ["blight", "পাতাপোড়া", "yellow", "হলুদ", "leaf tip", "dry"],
-        "text": (
-            "Leaf tips turn yellow then straw-coloured, drying from the edges. "
-            "Drain the field for 7-10 days, apply 5 kg potash per bigha, stop urea. "
-            "No effective chemical cure; use resistant varieties next season."
-        ),
-    },
-    {
-        "id": "brri-bph-01",
-        "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Nilaparvata_lugens_-_Brown_planthopper_-_UGA5190055.jpg/960px-Nilaparvata_lugens_-_Brown_planthopper_-_UGA5190055.jpg",
-        "image_credit": "Wikimedia Commons, CC BY 3.0 US",
-        "crop": "rice",
-        "title": "Brown planthopper (বাদামি গাছফড়িং)",
-        "source": "BRRI Insect Pest Leaflet (simulated)",
-        "keywords": ["planthopper", "গাছফড়িং", "hopper", "burn", "insect", "পোকা"],
-        "text": (
-            "Insects at the base of the plant; circular 'hopper burn' patches. "
-            "Split the canopy into alleys for sunlight, drain water. Spray at the "
-            "base only when >10 insects per hill."
-        ),
-    },
-]
+Sync tools: the lookups block, and LangChain runs sync tools in a thread.
+"""
+
+import logging
+import threading
+from typing import Literal
+
+from langchain.tools import ToolException, tool
+
+from meta_hackathon.knowledge import get_problem, preload, search_problems
+
+logger = logging.getLogger(__name__)
+
+
+def _warm() -> None:
+    try:
+        preload()
+    except Exception:
+        logger.warning("Could not preload the Krishoker Janala advice; the first search will load it.", exc_info=True)
+
+
+# Load the advice in the background when the agent starts, not on the first farmer's search (~2 s).
+threading.Thread(target=_warm, name="kj-preload", daemon=True).start()
+
+ProblemType = Literal["pest", "disease", "deficiency", "weed", "rodent", "other"]
 
 
 @tool
-def search_knowledgebase(query: str, crop: str | None = None, top_k: int = 3) -> list[dict]:
-    """Search the verified agriculture knowledge base (DAE / BRRI / BARI guidance)
-    for rice disease and pest treatment. It only covers a few topics so far; use
-    search_internet for anything it does not match. Cite the returned `id`s.
+def search_crop_problems(crop: str, query: str, problem_type: ProblemType | None = None) -> dict:
+    """Find crop problems in Krishoker Janala, the DAE's official advice for Bangladeshi farmers
+    (998 pests, diseases and deficiencies on 122 crops). Use it first for any pest, disease,
+    deficiency or "what is wrong with my crop" question, and for every photo diagnosis.
 
-    Args:
-        query: Symptoms or question, in Bangla or English.
-        crop: Optional crop filter (e.g. "rice").
-        top_k: Number of chunks to return (1-5).
+    - crop: the crop in Bangla or English ("ধান", "বেগুন", "Potato").
+    - query: in Bangla, the problem names you suspect AND the symptoms in the farmer's words,
+      e.g. "মাজরা পোকা মরা ডিগ সাদা শীষ" or "ব্লাস্ট পাতায় চোখের মতো দাগ ছাই রং". Names you
+      suspect matter most; add the likely alternatives too.
+    - problem_type: only pests, only diseases, ... when you are sure which kind it is.
+
+    Returns up to 5 problems, best first, with problem_id and the start of the symptoms.
+    Compare the symptoms with what the farmer describes or the photo shows, then call
+    get_crop_problem for the one that fits (or two, if you cannot tell them apart).
     """
-    # SIMULATED: naive keyword overlap; replace with hybrid vector search.
-    q = query.lower()
-    candidates = [c for c in _CHUNKS if not crop or c["crop"] == crop.lower()]
-    scored = sorted(
-        ((sum(k.lower() in q for k in c["keywords"]), c) for c in candidates),
-        key=lambda x: x[0],
-        reverse=True,
-    )
-    hits = [
-        {k: c[k] for k in ("id", "title", "source", "text", "image_url", "image_credit")} | {"score": score}
-        for score, c in scored[: max(1, min(top_k, 5))]
-        if score > 0
-    ]
-    return hits or [
-        {"id": None, "text": "No matching guidance in the knowledge base. Call search_internet for this.", "score": 0}
-    ]
+    return search_problems(crop, query, problem_type)
+
+
+@tool
+def get_crop_problem(problem_id: int) -> dict:
+    """The full Krishoker Janala advice for one problem from search_crop_problems: symptoms,
+    management, do's and don'ts, official reference photos, and every chemical the advice names
+    checked against the DAE pesticide register (Dec 2020):
+
+    - chemicals_in_advice: what the advice names, its dose, the active ingredient, and
+      registered_for_this_crop with the register's label dose (for_pest says for which pest).
+      When registered_for_this_crop is false, do not recommend it: say the register does not
+      list it for this crop.
+    - registered_for_this_problem: products the register lists for this crop and pest.
+    - reference_photos: official photos of the problem, to show the farmer.
+    """
+    problem = get_problem(problem_id)
+    if problem is None:
+        raise ToolException(f"No problem {problem_id}; use a problem_id from search_crop_problems.")
+    return problem
+
+
+for _t in (search_crop_problems, get_crop_problem):
+    _t.handle_tool_error = True
